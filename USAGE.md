@@ -152,3 +152,38 @@ func connection(_ connection: VNCConnection,
 ```
 - RoyalVNCKit also provides some ready-to-use views that handle this for you (and more, including input handling). For instance, `VNCCAFramebufferView` is an `NSView` subclass for macOS.
     - Just initialize the view with a frame, framebuffer and connection, add it to your view hierarchy. It will automatically re-assign your connection delegate, consume the methods it needs for updating the view (`connection(_:didUpdateFramebuffer:x:y:width:height:)` and `connection(_:didUpdateCursor:)`) and forwards the rest to your original connection delegate.
+# Clipboard policy and Unicode text
+
+With `isClipboardRedirectionEnabled`, connections negotiate the RFB Extended
+Clipboard pseudo-encoding and exchange UTF-8 text when supported by the peer.
+Legacy peers continue to use Latin-1. Images, formatted text and file transfer are
+not implemented by this text extension. Text is limited to 1 MiB after CRLF
+normalization, including its terminating null byte.
+
+Assign a `VNCClipboardDelegate` to decide independently whether a connection may
+send or receive clipboard text. All callbacks run on the main queue. The delegate
+owns delivery of received text, including any desired system clipboard write.
+Keep the delegate alive; the connection holds it weakly. Without a delegate,
+automatic synchronization retains its previous behavior.
+
+An application with tabs should permit clipboard access only for the active
+session in its foreground window. Call `resetClipboardSynchronization()` on the
+main queue whenever activating or deactivating a tab; this discards pending text
+and prevents the clipboard's current contents from being treated as a new change.
+Reset again when the app/window gains or loses focus. A delegate can also track the
+system clipboard change count to reject content copied before activation.
+
+`await connection.sendClipboardText(text)` sends explicit text without writing to
+the system clipboard. It returns `false` when the connection or delegate disallows
+sending, the text exceeds the limit, or the peer's encoding cannot represent it.
+For example, Unicode text sent to a legacy Latin-1 peer is rejected instead of
+silently clearing the remote clipboard. A `true` result means a message was queued,
+not that the peer has already delivered the text to an application.
+
+Run `swift test` for bounded decoding, Unicode, malformed input, legacy fallback
+and policy tests. The optional `ClipboardInteropTests` expects a disposable
+TigerVNC server on **localhost:5906**. Set `ROYAL_VNC_INTEROP_READY` to an absolute
+temporary filename. When that file appears, set the server's X11 clipboard to
+`remote åäö 日本語 🙂` followed by a newline and `second line`; an external clipboard
+reader should then receive `local åäö 日本語 🙂` followed by a newline and `second line`.
+The test uses fixed markers and does not read or overwrite the host's clipboard.
