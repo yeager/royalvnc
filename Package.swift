@@ -82,6 +82,7 @@ let package = Package(
 
         d3desTarget,
         zTarget,
+        .testTarget(name: "RoyalVNCKitTests", dependencies: ["RoyalVNCKit"]),
 
         .executableTarget(
             name: "RoyalVNCKitDemo",
