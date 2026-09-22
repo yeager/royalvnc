@@ -32,6 +32,16 @@ final class VeNCryptTests: XCTestCase {
 			try await VNCProtocol.VeNCrypt.receiveTLSSubtypeAcknowledgement(connection: subtypeConnection)
 		}
 	}
+
+	func testOnlyCertificateAuthenticatedVNCIsSelectedByDefault() {
+		XCTAssertEqual(
+			VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(
+				from: [.tlsNone, .tlsVNC, .x509VNC]
+			),
+			.x509VNC
+		)
+		XCTAssertNil(VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(from: [.tlsNone, .tlsVNC]))
+	}
 }
 
 private final class VeNCryptReadingConnection: NetworkConnectionReading {

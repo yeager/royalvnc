@@ -81,6 +81,14 @@ extension VNCProtocol.VeNCrypt {
 		return subtypes
 	}
 
+	/// Returns the only VeNCrypt subtype that can be selected automatically
+	/// once a certificate-validating TLS transport exists. Anonymous TLS and
+	/// plaintext credentials require an explicit opt-in policy and are never
+	/// silently selected.
+	static func preferredAuthenticatedTLSSubtype(from offeredSubtypes: [Subtype]) -> Subtype? {
+		offeredSubtypes.contains(.x509VNC) ? .x509VNC : nil
+	}
+
 	static func sendSubtype(_ subtype: Subtype,
 						connection: NetworkConnectionWriting) async throws {
 		var data = Data(capacity: MemoryLayout<UInt32>.size)
