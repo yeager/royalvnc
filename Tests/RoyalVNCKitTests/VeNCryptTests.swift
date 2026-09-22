@@ -47,7 +47,7 @@ private final class VeNCryptReadingConnection: NetworkConnectionReading {
 		}
 
 		let count = min(remaining.count, maximumLength)
-		let result = Data(remaining.prefix(count))
+		let result = remaining.prefix(count)
 		remaining.removeFirst(count)
 		return result
 	}
