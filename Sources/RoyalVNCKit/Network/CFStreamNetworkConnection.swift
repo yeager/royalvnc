@@ -81,7 +81,7 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 	}
 
 	func upgradeToTLS(serverName: String) async throws {
-		try await withCheckedThrowingContinuation { continuation in
+		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
 			queue.async { [weak self] in
 				guard let self, let readStream, !didUpgradeToTLS else {
 					continuation.resume(throwing: VNCError.protocol(.invalidData))
@@ -91,7 +91,7 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 				let settings: [CFString: Any] = [
 					kCFStreamSSLPeerName: serverName,
 					kCFStreamSSLValidatesCertificateChain: true,
-					kCFStreamSSLLevel: kCFStreamSocketSecurityLevelTLSv1_2
+					kCFStreamSSLLevel: kCFStreamSocketSecurityLevelNegotiatedSSL
 				]
 
 				guard CFReadStreamSetProperty(readStream, kCFStreamPropertySSLSettings, settings as CFDictionary) else {
@@ -106,7 +106,7 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 	}
 
 	func read(minimumLength: Int, maximumLength: Int) async throws -> Data {
-		try await withCheckedThrowingContinuation { continuation in
+		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
 			queue.async { [weak self] in
 				guard let self, let readStream else {
 					continuation.resume(throwing: VNCError.connection(.closed))
