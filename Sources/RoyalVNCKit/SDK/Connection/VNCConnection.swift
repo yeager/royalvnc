@@ -70,13 +70,16 @@ public final class VNCConnection: NSObjectOrAnyObject {
 
     var mouseButtonState: VNCProtocol.MousePointerButton = [ ]
 
-    lazy var connection: some NetworkConnection = {
+    lazy var connection: any NetworkConnection = {
         let connectionSettings = NetworkConnectionSettings(connectionTimeout: 15,
                                                            host: settings.hostname,
                                                            port: settings.port)
 
-        // NOTE: To test SocketNetworkConnection on Darwin (macOS, iOS, etc.), comment out the the #if
-#if canImport(Network)
+        // VeNCrypt upgrades the established RFB byte stream to TLS. CFStream
+        // is the Apple transport that supports that operation in-place.
+#if canImport(CFNetwork)
+        let connection = CFStreamNetworkConnection(settings: connectionSettings)
+#elseif canImport(Network)
         let connection = NWConnection(settings: connectionSettings)
 #else
 		let connection = SocketNetworkConnection(settings: connectionSettings)

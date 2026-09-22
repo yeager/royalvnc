@@ -103,7 +103,10 @@ private extension VNCConnection {
 
 		let supportedSecurityTypes = supportedTypes.securityTypes
 
-		if supportedSecurityTypes.contains(.none) {
+		if supportedSecurityTypes.contains(.veNCrypt),
+			connection is any TLSUpgradableNetworkConnection {
+			chosenSecurityType = .veNCrypt
+		} else if supportedSecurityTypes.contains(.none) {
 			chosenSecurityType = .none
 		} else if supportedSecurityTypes.contains(.diffieHellman) {
 			chosenSecurityType = .diffieHellman
@@ -139,6 +142,18 @@ private extension VNCConnection {
 		let shouldRequestSecurityTypeResult: Bool
 
 		switch securityType {
+			case .veNCrypt:
+				shouldRequestSecurityTypeResult = true
+
+				guard let tlsConnection = connection as? any TLSUpgradableNetworkConnection else {
+					throw VNCError.authentication(.clientCouldNotDecideOnSecurityType)
+				}
+
+				_ = try await VNCProtocol.VeNCrypt.negotiate(connection: connection) { _ in
+					try await tlsConnection.upgradeToTLS(serverName: settings.hostname)
+				}
+
+				try await performVNCAuthentication()
 			case .none:
 				if let protocolVersion = state.agreedProtocolVersion {
 					// Only servers 3.8+ send a security result when no authentication is configured
