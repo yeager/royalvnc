@@ -77,6 +77,12 @@ let package = Package(
                 .unsafeFlags([
                     "-enable-library-evolution"
                 ])
+            ],
+
+            linkerSettings: [
+                .linkedFramework("CFNetwork", .when(platforms: [
+                    .macOS, .iOS, .macCatalyst, .tvOS, .visionOS
+                ]))
             ]
         ),
 

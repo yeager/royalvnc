@@ -49,6 +49,12 @@ protocol NetworkConnection: NetworkConnectionReading, NetworkConnectionWriting {
     func start(queue: DispatchQueue)
 }
 
+/// A connection that can encrypt its already-established byte stream without
+/// replacing the underlying TCP session. VeNCrypt needs this exact operation.
+protocol TLSUpgradableNetworkConnection: NetworkConnection {
+	func upgradeToTLS(serverName: String) async throws
+}
+
 protocol NetworkConnectionReading {
 	func readPadding() async throws
 	func readPadding(length: Int) async throws
