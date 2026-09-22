@@ -51,6 +51,26 @@ final class VeNCryptTests: XCTestCase {
 
 		XCTAssertEqual(connection.data, Data([0, 2, 0, 0, 1, 5]))
 	}
+
+	func testNegotiatesBeforeUpgradingTheExistingConnectionToTLS() async throws {
+		let connection = VeNCryptConnection(data: Data([
+			0, 2, // server version
+			0, // version acknowledgement
+			2, // subtype count
+			0, 0, 1, 2, // TLSVNC (not certificate-authenticated)
+			0, 0, 1, 5, // X509VNC
+			1 // TLS subtype acknowledgement
+		]))
+		var upgradedSubtype: VNCProtocol.VeNCrypt.Subtype?
+
+		let selected = try await VNCProtocol.VeNCrypt.negotiate(connection: connection) { subtype in
+			upgradedSubtype = subtype
+		}
+
+		XCTAssertEqual(selected, .x509VNC)
+		XCTAssertEqual(upgradedSubtype, .x509VNC)
+		XCTAssertEqual(connection.data, Data([0, 2, 0, 0, 1, 5]))
+	}
 }
 
 private final class VeNCryptReadingConnection: NetworkConnectionReading {
@@ -74,6 +94,41 @@ private final class VeNCryptReadingConnection: NetworkConnectionReading {
 
 private final class VeNCryptWritingConnection: NetworkConnectionWriting {
 	private(set) var data = Data()
+
+	func write(data: Data) async throws {
+		self.data.append(data)
+	}
+}
+
+private final class VeNCryptConnection: NetworkConnection {
+	private var remaining: Data
+	private(set) var data = Data()
+
+	init(data: Data) {
+		remaining = data
+	}
+
+	required convenience init(settings: NetworkConnectionSettings) {
+		self.init(data: Data())
+	}
+
+	var status: NetworkConnectionStatus { .ready }
+	var isReady: Bool { true }
+
+	func setStatusUpdateHandler(_ statusUpdateHandler: NetworkConnectionStatusUpdateHandler?) {}
+	func cancel() {}
+	func start(queue: DispatchQueue) {}
+
+	func read(minimumLength: Int, maximumLength: Int) async throws -> Data {
+		guard remaining.count >= minimumLength else {
+			throw VNCError.protocol(.invalidData)
+		}
+
+		let count = min(remaining.count, maximumLength)
+		let result = remaining.prefix(count)
+		remaining.removeFirst(count)
+		return result
+	}
 
 	func write(data: Data) async throws {
 		self.data.append(data)

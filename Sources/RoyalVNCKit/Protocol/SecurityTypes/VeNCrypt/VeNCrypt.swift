@@ -52,6 +52,33 @@ extension VNCProtocol {
 }
 
 extension VNCProtocol.VeNCrypt {
+	/// Completes the plaintext VeNCrypt negotiation and upgrades the stream only
+	/// after the server has accepted the selected subtype. The caller owns the
+	/// upgrade operation because the underlying RFB connection must stay open.
+	static func negotiate(
+		connection: NetworkConnection,
+		upgradeToTLS: (Subtype) async throws -> Void
+	) async throws -> Subtype {
+		let serverVersion = try await receiveVersion(connection: connection)
+		guard serverVersion.major == 0, serverVersion.minor >= Version.version0_2.minor else {
+			throw VNCError.protocol(.invalidData)
+		}
+
+		try await sendVersion(.version0_2, connection: connection)
+		try await receiveVersionAcknowledgement(connection: connection)
+
+		let offeredSubtypes = try await receiveSubtypes(connection: connection)
+		guard let selectedSubtype = preferredAuthenticatedTLSSubtype(from: offeredSubtypes) else {
+			throw VNCError.authentication(.clientCouldNotDecideOnSecurityType)
+		}
+
+		try await sendSubtype(selectedSubtype, connection: connection)
+		try await receiveTLSSubtypeAcknowledgement(connection: connection)
+		try await upgradeToTLS(selectedSubtype)
+
+		return selectedSubtype
+	}
+
 	static func receiveVersion(connection: NetworkConnectionReading) async throws -> Version {
 		Version(major: try await connection.readUInt8(),
 				minor: try await connection.readUInt8())
