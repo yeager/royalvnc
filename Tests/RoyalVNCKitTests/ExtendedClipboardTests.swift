@@ -30,6 +30,13 @@ final class ExtendedClipboardTests: XCTestCase {
 		XCTAssertEqual(message.serverCapabilities?.format.rawValue, 1)
 		XCTAssertEqual(message.serverCapabilities?.action.rawValue, 1 << 24)
 	}
+
+	func testByteReadsHandleSlicedData() async throws {
+		let connection = ReadingConnection(data: Data([42]))
+		let value = try await connection.readUInt8()
+
+		XCTAssertEqual(value, 42)
+	}
 }
 
 private final class ReadingConnection: NetworkConnectionReading {
