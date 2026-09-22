@@ -113,6 +113,9 @@ jobs:
         swift build --configuration release --arch arm64
         swift build --configuration release --arch x86_64
 
+        swift test --arch arm64
+        swift test --arch x86_64
+
         mkdir -p .build/universal-apple-macosx/release
 
         lipo -create \
