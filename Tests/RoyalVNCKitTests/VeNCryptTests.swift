@@ -42,6 +42,15 @@ final class VeNCryptTests: XCTestCase {
 		)
 		XCTAssertNil(VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(from: [.tlsNone, .tlsVNC]))
 	}
+
+	func testWritesVersionAndSubtypeInNetworkOrder() async throws {
+		let connection = VeNCryptWritingConnection()
+
+		try await VNCProtocol.VeNCrypt.sendVersion(.version0_2, connection: connection)
+		try await VNCProtocol.VeNCrypt.sendSubtype(.x509VNC, connection: connection)
+
+		XCTAssertEqual(connection.data, Data([0, 2, 0, 0, 1, 5]))
+	}
 }
 
 private final class VeNCryptReadingConnection: NetworkConnectionReading {
@@ -60,6 +69,14 @@ private final class VeNCryptReadingConnection: NetworkConnectionReading {
 		let result = remaining.prefix(count)
 		remaining.removeFirst(count)
 		return result
+	}
+}
+
+private final class VeNCryptWritingConnection: NetworkConnectionWriting {
+	private(set) var data = Data()
+
+	func write(data: Data) async throws {
+		self.data.append(data)
 	}
 }
 
