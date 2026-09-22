@@ -118,7 +118,9 @@ jobs:
         swift build --configuration release --arch x86_64
 
         swift test --arch arm64
-        swift test --arch x86_64
+        # The GitHub macOS runner is ARM64. Compile the Intel test bundle to
+        # validate that architecture, but do not attempt to load it on ARM.
+        swift build --build-tests --arch x86_64
 
         mkdir -p .build/universal-apple-macosx/release
 
