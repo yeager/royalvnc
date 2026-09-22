@@ -114,15 +114,20 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 				}
 
 				var buffer = [UInt8](repeating: 0, count: maximumLength)
-				let count = buffer.withUnsafeMutableBufferPointer {
-					CFReadStreamRead(readStream, $0.baseAddress, maximumLength)
-				}
-				guard count >= minimumLength else {
-					continuation.resume(throwing: VNCError.protocol(.noData))
-					return
-				}
+				var received = 0
 
-				continuation.resume(returning: Data(buffer.prefix(count)))
+				repeat {
+					let count = buffer.withUnsafeMutableBufferPointer {
+						CFReadStreamRead(readStream, $0.baseAddress?.advanced(by: received), maximumLength - received)
+					}
+					guard count > 0 else {
+						continuation.resume(throwing: VNCError.protocol(.noData))
+						return
+					}
+					received += count
+				} while received < minimumLength
+
+				continuation.resume(returning: Data(buffer.prefix(received)))
 			}
 		}
 	}
