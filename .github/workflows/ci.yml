@@ -25,6 +25,7 @@ jobs:
     name: "CI - ${{ matrix.name }}"
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: "Ubuntu ARM64"
