@@ -114,15 +114,9 @@ private extension VNCConnection {
 		let serverCutText = try await VNCProtocol.ServerCutText.receive(connection: connection,
 													logger: logger)
 
-		if serverCutText.extended?.serverCapabilities != nil {
-			logger.logDebug("Responding to Extended Clipboard capabilities")
-			enqueueExtendedClipboardCapabilities()
-			return
+		DispatchQueue.main.async { [weak self] in
+			self?.handleClipboardMessage(serverCutText)
 		}
-
-        DispatchQueue.main.async { [weak self] in
-            self?.handleClipboardMessage(serverCutText)
-        }
 	}
 
 	func handleBellMessage() async throws {

@@ -20,15 +20,17 @@ final class ExtendedClipboardTests: XCTestCase {
 			0x01, 0x00, 0x00, 0x01,
 			0x00, 0x10, 0x00, 0x00
 		])
-		let connection = ReadingConnection(data: payload)
-		let message = try await VNCProtocol.ServerCutText.ExtendedServerCutText.receive(
+		var packet = Data([0, 0, 0])
+		packet.append(UInt32(bitPattern: -Int32(payload.count)), bigEndian: true)
+		packet.append(payload)
+		let connection = ReadingConnection(data: packet)
+		let message = try await VNCProtocol.ServerCutText.receive(
 			connection: connection,
-			logger: VNCPrintLogger(),
-			length: 8
+			logger: VNCPrintLogger()
 		)
 
-		XCTAssertEqual(message.serverCapabilities?.format.rawValue, 1)
-		XCTAssertEqual(message.serverCapabilities?.action.rawValue, 1 << 24)
+		XCTAssertEqual(message.extended?.formats, ExtendedClipboard.text)
+		XCTAssertEqual(message.extended?.action, ExtendedClipboard.caps)
 	}
 
 	func testByteReadsHandleSlicedData() async throws {
