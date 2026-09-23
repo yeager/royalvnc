@@ -36,6 +36,7 @@ public final class VNCConnection: NSObjectOrAnyObject {
     // Clipboard state is accessed only on the main queue.
     var serverClipboardCapabilities: ExtendedClipboard?
     var pendingClipboardText: String?
+    var pendingClipboardImage: Data?
     /// True only when Tight ServerInit advertises both required file-transfer directions.
     public internal(set) var supportsTightFileTransfer = false
     public internal(set) var supportsTightFileDownload = false

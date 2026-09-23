@@ -32,12 +32,12 @@ It depends on [CryptoSwift](https://github.com/krzyzanowskim/CryptoSwift), [zlib
 - DesktopSize
 - ExtendedDesktopSize
 - ContinuousUpdates
-- ExtendedClipboard (UTF-8 text)
+- ExtendedClipboard (UTF-8 text and DIB V5 images)
 
 ### Misc. Features
 - Support for 8-bit, 16-bit and 24/32-bit color depths with high-performance framebuffer implementations.
-- Clipboard redirection support for text in both ways (remote to local and local to remote).
-- Optional per-connection clipboard policy for applications with multiple sessions, plus explicit text sending without changing the system clipboard. Extended Clipboard supports Unicode text with a 1 MiB limit; legacy peers retain Latin-1 text support.
+- Clipboard redirection support for text and images in both directions (remote to local and local to remote).
+- Optional per-connection clipboard policy for applications with multiple sessions, plus explicit text sending without changing the system clipboard. Extended Clipboard supports Unicode text with a 1 MiB limit and uncompressed 32-bit DIB V5 images up to 8 MiB; legacy peers retain Latin-1 text support.
 - Legacy Tight interaction-capability file transfer, when explicitly enabled and advertised by the server. This is separate from clipboard text and does not support TightVNC 2.x's incompatible file-transfer extension.
 - Connection state management and rendering is decoupled from each other, so it's possible to build "headless" clients (ie. no rendering of the remote desktop).
 - The SDK includes a ready-to-use implementation of a framebuffer view for macOS (subclass of `NSView`), which also handles mouse and keyboard input, local cursor (`NSCursor`), scaling and rendering. The iOS/iPadOS equivalent (`UIView`) is a work-in-progress.
