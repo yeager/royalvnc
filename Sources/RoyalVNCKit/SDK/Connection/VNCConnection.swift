@@ -38,6 +38,8 @@ public final class VNCConnection: NSObjectOrAnyObject {
     var pendingClipboardText: String?
     /// True only when Tight ServerInit advertises both required file-transfer directions.
     public internal(set) var supportsTightFileTransfer = false
+    public internal(set) var supportsTightFileDownload = false
+    public internal(set) var supportsTightFileUpload = false
 
 #if canImport(ObjectiveC)
 	@objc
@@ -295,6 +297,8 @@ public final class VNCConnection: NSObjectOrAnyObject {
 extension VNCConnection {
 	func beginConnecting() {
 		supportsTightFileTransfer = false
+		supportsTightFileDownload = false
+		supportsTightFileUpload = false
 		state.isTightSecurityEnabled = false
 		updateConnectionState(.connecting)
 

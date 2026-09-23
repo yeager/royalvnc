@@ -15,9 +15,27 @@ final class TightInteractionCapabilitiesTests: XCTestCase {
         for entry in server + client { packet.append(entry) }
 
         let decoded = try TightInteractionCapabilities.decode(packet)
+        XCTAssertTrue(decoded.supportsTightFileDownload)
+        XCTAssertTrue(decoded.supportsTightFileUpload)
         XCTAssertTrue(decoded.supportsTightFileTransfer)
         XCTAssertEqual(decoded.serverMessages.map(\.signature), ["FTS_LSDT", "FTS_DNDT"])
         XCTAssertEqual(decoded.clientMessages.map(\.code), [130, 131, 132, 133])
+    }
+
+    func testDownloadCapabilityDoesNotRequireServerUploadSupport() throws {
+        let server = [capability(130, "TGHT", "FTS_LSDT"), capability(131, "TGHT", "FTS_DNDT")]
+        let client = [capability(130, "TGHT", "FTC_LSRQ"), capability(131, "TGHT", "FTC_DNRQ")]
+        var packet = Data()
+        packet.append(UInt16(server.count), bigEndian: true)
+        packet.append(UInt16(client.count), bigEndian: true)
+        packet.append(UInt16(0), bigEndian: true)
+        packet.append(UInt16(0), bigEndian: true)
+        for entry in server + client { packet.append(entry) }
+
+        let decoded = try TightInteractionCapabilities.decode(packet)
+        XCTAssertTrue(decoded.supportsTightFileDownload)
+        XCTAssertFalse(decoded.supportsTightFileUpload)
+        XCTAssertFalse(decoded.supportsTightFileTransfer)
     }
 
     func testDoesNotInferUnadvertisedFileTransferAndRetainsUnknownExtensions() throws {
@@ -192,6 +210,8 @@ final class TightInteractionCapabilitiesTests: XCTestCase {
             connection.connectionState = .connected
             XCTAssertThrowsError(try connection.requestFileList(directory: "/"))
             connection.supportsTightFileTransfer = true
+            connection.supportsTightFileDownload = true
+            connection.supportsTightFileUpload = true
             XCTAssertNoThrow(try connection.requestFileList(directory: "/"))
             XCTAssertNoThrow(try connection.requestFileDownload(path: "/remote.txt"))
             XCTAssertNoThrow(try connection.requestFileUpload(path: "/remote.txt"))
@@ -200,6 +220,29 @@ final class TightInteractionCapabilitiesTests: XCTestCase {
             let queued = (0..<5).compactMap { _ in connection.clientToServerMessageQueue.dequeue()?.data }
             XCTAssertEqual(queued.count, 5)
             XCTAssertTrue(queued.allSatisfy { [130, 131, 132, 133].contains($0.first ?? 0) })
+        }
+    }
+
+    func testReadOnlyTightServerAllowsListAndDownloadButRejectsUpload() async throws {
+        try await MainActor.run {
+            let settings = VNCConnection.Settings(isDebugLoggingEnabled: false, hostname: "localhost", port: 5900,
+                isShared: true, isScalingEnabled: true, useDisplayLink: false,
+                inputMode: .forwardKeyboardShortcutsIfNotInUseLocally, isClipboardRedirectionEnabled: true,
+                colorDepth: .depth24Bit, frameEncodings: .default)
+            let connection = VNCConnection(settings: settings, logger: VNCPrintLogger())
+            connection.connectionState = .connected
+            connection.supportsTightFileDownload = true
+            XCTAssertTrue(connection.canDownloadFiles)
+            XCTAssertFalse(connection.canUploadFiles)
+            XCTAssertFalse(connection.canTransferFiles)
+            XCTAssertNoThrow(try connection.requestFileList(directory: "/"))
+            XCTAssertNoThrow(try connection.requestFileDownload(path: "/remote.txt"))
+            XCTAssertThrowsError(try connection.requestFileUpload(path: "/remote.txt"))
+            XCTAssertThrowsError(try connection.sendFileUploadData(Data([1])))
+            XCTAssertThrowsError(try connection.finishFileUpload(modificationTime: 42))
+            let queued = (0..<2).compactMap { _ in connection.clientToServerMessageQueue.dequeue()?.data }
+            XCTAssertEqual(queued.count, 2)
+            XCTAssertEqual(queued.map(\.first), [130, 131])
         }
     }
 

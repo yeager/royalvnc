@@ -97,16 +97,26 @@ struct TightInteractionCapabilities: Equatable {
         try await connection.write(data: data)
     }
 
-    var supportsTightFileTransfer: Bool {
+    var supportsTightFileDownload: Bool {
         func contains(_ capabilities: [Capability], code: UInt32, signature: String) -> Bool {
             capabilities.contains { $0.code == code && $0.vendor == "TGHT" && $0.signature == signature }
         }
         return contains(serverMessages, code: 130, signature: "FTS_LSDT") &&
             contains(serverMessages, code: 131, signature: "FTS_DNDT") &&
             contains(clientMessages, code: 130, signature: "FTC_LSRQ") &&
-            contains(clientMessages, code: 131, signature: "FTC_DNRQ") &&
-            contains(clientMessages, code: 132, signature: "FTC_UPRQ") &&
+            contains(clientMessages, code: 131, signature: "FTC_DNRQ")
+    }
+
+    var supportsTightFileUpload: Bool {
+        func contains(_ capabilities: [Capability], code: UInt32, signature: String) -> Bool {
+            capabilities.contains { $0.code == code && $0.vendor == "TGHT" && $0.signature == signature }
+        }
+        return contains(clientMessages, code: 132, signature: "FTC_UPRQ") &&
             contains(clientMessages, code: 133, signature: "FTC_UPDT")
+    }
+
+    var supportsTightFileTransfer: Bool {
+        supportsTightFileDownload && supportsTightFileUpload
     }
 
     private init(serverMessages: [Capability], clientMessages: [Capability], encodings: [Capability]) {

@@ -282,7 +282,9 @@ private extension VNCConnection {
 		state.framebufferWidth = serverInit.framebufferWidth
 		state.framebufferHeight = serverInit.framebufferHeight
 		state.desktopName = serverInit.name
-		supportsTightFileTransfer = serverInit.tightCapabilities?.supportsTightFileTransfer ?? false
+		supportsTightFileDownload = serverInit.tightCapabilities?.supportsTightFileDownload ?? false
+		supportsTightFileUpload = serverInit.tightCapabilities?.supportsTightFileUpload ?? false
+		supportsTightFileTransfer = supportsTightFileDownload && supportsTightFileUpload
 
 		let serverPixelFormat = serverInit.pixelFormat
 

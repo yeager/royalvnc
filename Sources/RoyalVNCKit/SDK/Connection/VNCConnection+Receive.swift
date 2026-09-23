@@ -146,7 +146,7 @@ private extension VNCConnection {
 	}
 
     func handleTightFileListMessage() async throws {
-        guard supportsTightFileTransfer else { throw VNCError.protocol(.unsupportedServerToClientMessage(messageType: 130)) }
+        guard supportsTightFileDownload else { throw VNCError.protocol(.unsupportedServerToClientMessage(messageType: 130)) }
         let header = try await connection.read(length: 7)
         guard header.count == 7 else { throw VNCError.protocol(.invalidData) }
         let count = Int(header.withUnsafeBytes {
@@ -168,7 +168,7 @@ private extension VNCConnection {
     }
 
     func handleTightFileDownloadMessage() async throws {
-        guard supportsTightFileTransfer else { throw VNCError.protocol(.unsupportedServerToClientMessage(messageType: 131)) }
+        guard supportsTightFileDownload else { throw VNCError.protocol(.unsupportedServerToClientMessage(messageType: 131)) }
         let header = try await connection.read(length: 5)
         guard header.count == 5 else { throw VNCError.protocol(.invalidData) }
         let realLength = Int(header.withUnsafeBytes {
