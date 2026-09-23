@@ -106,16 +106,18 @@ private extension VNCConnection {
 		if supportedSecurityTypes.contains(.veNCrypt),
 			connection is any TLSUpgradableNetworkConnection {
 			chosenSecurityType = .veNCrypt
-		} else if supportedSecurityTypes.contains(.none) {
-			chosenSecurityType = .none
 		} else if supportedSecurityTypes.contains(.diffieHellman) {
 			chosenSecurityType = .diffieHellman
+		} else if prefersTightSecurityForFileTransfer && supportedSecurityTypes.contains(.tight) {
+			// Tight is selected only by explicit opt-in: negotiation may reject
+			// tunnels that this client cannot safely establish.
+			chosenSecurityType = .tight
 		} else if supportedSecurityTypes.contains(.ultraVNCMSLogonII) {
 			chosenSecurityType = .ultraVNCMSLogonII
 		} else if supportedSecurityTypes.contains(.vnc) {
 			chosenSecurityType = .vnc
-		} else if supportedSecurityTypes.contains(.tight) {
-			chosenSecurityType = .tight
+		} else if supportedSecurityTypes.contains(.none) {
+			chosenSecurityType = .none
 		} else {
 			chosenSecurityType = .invalid
 		}
@@ -127,6 +129,7 @@ private extension VNCConnection {
 
 		try await sendAuthenticationData(securityType: chosenSecurityType)
 	}
+
 
 	func sendAuthenticationData(securityType: VNCProtocol.SecurityType) async throws {
 		do {
@@ -173,11 +176,11 @@ private extension VNCConnection {
 				shouldRequestSecurityTypeResult = true
 
 				try await performUltraVNCMSLogonIIAuthentication()
-//			case .tight:
-//				shouldRequestSecurityTypeResult = true
-//				isTightSecurityEnabled = true
-//
-//				// TODO: Implement
+			case .tight:
+				shouldRequestSecurityTypeResult = true
+				state.isTightSecurityEnabled = true
+				let authentication = try await TightSecurity.negotiate(connection: connection)
+				if authentication == .vnc { try await performVNCAuthentication() }
 			default:
 				shouldRequestSecurityTypeResult = true
 		}
@@ -279,6 +282,7 @@ private extension VNCConnection {
 		state.framebufferWidth = serverInit.framebufferWidth
 		state.framebufferHeight = serverInit.framebufferHeight
 		state.desktopName = serverInit.name
+		supportsTightFileTransfer = serverInit.tightCapabilities?.supportsTightFileTransfer ?? false
 
 		let serverPixelFormat = serverInit.pixelFormat
 

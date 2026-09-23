@@ -28,9 +28,16 @@ public final class VNCConnection: NSObjectOrAnyObject {
 	public weak var delegate: VNCConnectionDelegate?
 
     public weak var clipboardDelegate: VNCClipboardDelegate?
+    /// Receives TightVNC file-transfer results on the main queue.
+    public var fileTransferHandler: ((VNCFileTransferEvent) -> Void)?
+    /// Allows Tight security negotiation for servers that advertise TightVNC
+    /// file transfer. Disabled by default to preserve existing security choice.
+    public var prefersTightSecurityForFileTransfer = false
     // Clipboard state is accessed only on the main queue.
     var serverClipboardCapabilities: ExtendedClipboard?
     var pendingClipboardText: String?
+    /// True only when Tight ServerInit advertises both required file-transfer directions.
+    public internal(set) var supportsTightFileTransfer = false
 
 #if canImport(ObjectiveC)
 	@objc
@@ -287,6 +294,8 @@ public final class VNCConnection: NSObjectOrAnyObject {
 // MARK: - Internal Connection State API
 extension VNCConnection {
 	func beginConnecting() {
+		supportsTightFileTransfer = false
+		state.isTightSecurityEnabled = false
 		updateConnectionState(.connecting)
 
 		connection.start(queue: queue)
