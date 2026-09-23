@@ -32,6 +32,23 @@ final class VNCKeyboardLayoutTests: XCTestCase {
         }
     }
 
+    func testInternationalCharactersUseValidUnicodeKeysyms() {
+        var tracker = VNCKeyEventTracker()
+        let characters: [(String, UInt32)] = [
+            ("é", 0xE9),          // Latin-1 character used by AZERTY layouts.
+            ("€", 0x010020AC),    // Unicode keysym for characters above Latin-1.
+            ("日", 0x010065E5),    // CJK input.
+            ("🙂", 0x0101F642)     // Supplementary-plane Unicode input.
+        ]
+
+        for (index, item) in characters.enumerated() {
+            let keyCode = CGKeyCode(0xFF00 + index)
+            let keyDown = tracker.keyDown(for: keyCode, characters: item.0)
+            XCTAssertEqual(keyDown.map(\.rawValue), [item.1], item.0)
+            XCTAssertEqual(tracker.keyUp(for: keyCode), keyDown, item.0)
+        }
+    }
+
     func testSwedishOptionTwoSendsAndReleasesBothKeys() {
         var tracker = VNCKeyEventTracker()
         let optionDown = KeyboardModifiers(currentFlags: [.leftOption], lastFlags: []).events
