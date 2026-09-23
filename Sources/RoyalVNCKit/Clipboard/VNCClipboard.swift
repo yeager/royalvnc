@@ -9,7 +9,9 @@ import AppKit
 #elseif os(iOS)
 	import UIKit
 #endif
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 final class VNCClipboard {
 #if os(macOS)
@@ -31,6 +33,7 @@ final class VNCClipboard {
 #endif
 }
 
+#if os(macOS) || os(iOS)
 extension VNCClipboard {
 	var text: String? {
 		get {
@@ -221,3 +224,4 @@ public enum VNCClipboardImageCodec {
         DIBV5Bitmap.decode(data)
     }
 }
+#endif

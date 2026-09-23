@@ -1,6 +1,8 @@
 import Foundation
 import XCTest
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 #if os(macOS)
 import AppKit
 #endif
