@@ -33,7 +33,6 @@ final class VNCClipboard {
 #endif
 }
 
-#if os(macOS) || os(iOS)
 extension VNCClipboard {
 	var text: String? {
 		get {
@@ -80,6 +79,7 @@ extension VNCClipboard {
 	}
 }
 
+#if os(macOS) || os(iOS)
 extension VNCClipboard {
     var imageData: Data? {
         get {
@@ -222,6 +222,13 @@ public enum VNCClipboardImageCodec {
     /// Decodes the supported DIB V5 subset. Invalid or oversized payloads return `nil`.
     public static func decode(_ data: Data) -> CGImage? {
         DIBV5Bitmap.decode(data)
+    }
+}
+#else
+extension VNCClipboard {
+    var imageData: Data? {
+        get { nil }
+        set {}
     }
 }
 #endif
