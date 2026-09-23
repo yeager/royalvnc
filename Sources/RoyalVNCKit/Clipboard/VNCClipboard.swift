@@ -23,6 +23,12 @@ final class VNCClipboard {
 		self.pasteboard = .general
 #endif
 	}
+
+#if os(macOS)
+    init(pasteboard: NSPasteboard) {
+        self.pasteboard = pasteboard
+    }
+#endif
 }
 
 extension VNCClipboard {

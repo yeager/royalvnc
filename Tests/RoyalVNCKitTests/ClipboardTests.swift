@@ -102,6 +102,27 @@ final class ClipboardTests: XCTestCase {
             }
         }
     }
+
+    func testDIBV5ImageRoundTripsThroughAnIsolatedPasteboard() throws {
+        let pixels = Data([255, 0, 0, 255])
+        let provider = try XCTUnwrap(CGDataProvider(data: pixels as CFData))
+        let image = try XCTUnwrap(CGImage(width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 32,
+            bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
+            decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("RoyalVNCKitTest-\\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        let clipboard = VNCClipboard(pasteboard: pasteboard)
+        clipboard.imageData = try XCTUnwrap(VNCClipboardImageCodec.encode(image))
+        XCTAssertNotNil(pasteboard.data(forType: .png))
+
+        let roundTripped = try XCTUnwrap(clipboard.imageData)
+        let decoded = try XCTUnwrap(VNCClipboardImageCodec.decode(roundTripped))
+        let color = try XCTUnwrap(NSBitmapImageRep(cgImage: decoded).colorAt(x: 0, y: 0)?.usingColorSpace(.deviceRGB))
+        XCTAssertGreaterThan(color.redComponent, 0.95)
+        XCTAssertLessThan(color.greenComponent, 0.05)
+        XCTAssertLessThan(color.blueComponent, 0.05)
+    }
 #endif
 
     func testProvideUsesIndependentZlibStreams() throws {
