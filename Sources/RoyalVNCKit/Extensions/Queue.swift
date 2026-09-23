@@ -1,8 +1,4 @@
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
 import Foundation
-#endif
 
 final class Queue<T>: @unchecked Sendable {
 	private var list = [T]()
