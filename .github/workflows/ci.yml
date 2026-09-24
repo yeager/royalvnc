@@ -137,7 +137,21 @@ jobs:
 
     # .NET bindings and NuGet package artifacts
 
+    - name: build .NET bindings (Linux)
+      if: "success() && matrix.env.OS == 'linux'"
+      run: |
+        swift_build_output_dir="$(swift build --configuration release --show-bin-path)"
+        printf 'Swift build output: %s\n' "$swift_build_output_dir"
+        if [ ! -f "$swift_build_output_dir/libRoyalVNCKit.so" ]; then
+          find .build -type f -name 'libRoyalVNCKit.so' -print
+          echo "SwiftPM did not produce libRoyalVNCKit.so in its reported build directory." >&2
+          exit 1
+        fi
+        dotnet build --configuration Release Bindings/dotnet/RoyalApps.RoyalVNCKit.slnx \
+          "-p:SwiftBuildOutputDir=$swift_build_output_dir"
+
     - name: build .NET bindings
+      if: "success() && matrix.env.OS != 'linux'"
       run: |
         dotnet build --configuration Release Bindings/dotnet/RoyalApps.RoyalVNCKit.slnx
 
