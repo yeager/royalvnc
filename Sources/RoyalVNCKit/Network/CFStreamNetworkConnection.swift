@@ -17,7 +17,9 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 
 	private var readStream: CFReadStream?
 	private var writeStream: CFWriteStream?
-	private var queue = DispatchQueue(label: "com.royalapps.royalvnc.cfstream.placeholder")
+	private var lifecycleQueue = DispatchQueue(label: "com.royalapps.royalvnc.cfstream.lifecycle.placeholder")
+	private let readQueue = DispatchQueue(label: "com.royalapps.royalvnc.cfstream.read")
+	private let writeQueue = DispatchQueue(label: "com.royalapps.royalvnc.cfstream.write")
 	private var didUpgradeToTLS = false
 
 	private(set) var statusUpdateHandler: NetworkConnectionStatusUpdateHandler?
@@ -39,7 +41,7 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 	}
 
 	func start(queue: DispatchQueue) {
-		self.queue = queue
+		self.lifecycleQueue = queue
 		status = .preparing
 
 		queue.async { [weak self] in
@@ -70,19 +72,29 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 	}
 
 	func cancel() {
-		queue.async { [weak self] in
-			guard let self else { return }
+		let group = DispatchGroup()
+		group.enter()
+		readQueue.async { [weak self] in
+			guard let self else { group.leave(); return }
 			if let readStream { CFReadStreamClose(readStream) }
-			if let writeStream { CFWriteStreamClose(writeStream) }
 			readStream = nil
+			group.leave()
+		}
+		group.enter()
+		writeQueue.async { [weak self] in
+			guard let self else { group.leave(); return }
+			if let writeStream { CFWriteStreamClose(writeStream) }
 			writeStream = nil
-			status = .cancelled
+			group.leave()
+		}
+		group.notify(queue: lifecycleQueue) { [weak self] in
+			self?.status = .cancelled
 		}
 	}
 
 	func upgradeToTLS(serverName: String) async throws {
 		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-			queue.async { [weak self] in
+			readQueue.async { [weak self] in
 				guard let self, let readStream, !didUpgradeToTLS else {
 					continuation.resume(throwing: VNCError.protocol(.invalidData))
 					return
@@ -107,7 +119,7 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 
 	func read(minimumLength: Int, maximumLength: Int) async throws -> Data {
 		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-			queue.async { [weak self] in
+			readQueue.async { [weak self] in
 				guard let self, let readStream else {
 					continuation.resume(throwing: VNCError.connection(.closed))
 					return
@@ -134,7 +146,7 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 
 	func write(data: Data) async throws {
 		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-			queue.async { [weak self] in
+			writeQueue.async { [weak self] in
 				guard let self, let writeStream else {
 					continuation.resume(throwing: VNCError.connection(.closed))
 					return
