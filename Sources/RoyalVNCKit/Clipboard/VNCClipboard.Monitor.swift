@@ -21,7 +21,7 @@ final class VNCClipboardMonitor {
 
 	private(set) var isMonitoring = false
 
-#if !canImport(FoundationEssentials)
+#if os(macOS) || os(iOS) || !canImport(FoundationEssentials)
 	private var timer: Timer?
 #endif
 
@@ -43,13 +43,15 @@ final class VNCClipboardMonitor {
 }
 
 extension VNCClipboardMonitor {
+    func requestCurrentChange() { lastChangeCount = clipboard.changeCount - 1 }
+    func acknowledgeCurrentChange() { lastChangeCount = clipboard.changeCount }
 	func startMonitoring() {
 		stopMonitoring()
 
 		// -1 to send clipboard to trigger notification immediately if something's on the pasteboard
 		lastChangeCount = clipboard.changeCount - 1
 
-#if !canImport(FoundationEssentials)
+#if os(macOS) || os(iOS) || !canImport(FoundationEssentials)
 		guard timer == nil else { // Already have a timer
 			return
 		}
@@ -70,7 +72,7 @@ extension VNCClipboardMonitor {
 	}
 
 	func stopMonitoring() {
-#if !canImport(FoundationEssentials)
+#if os(macOS) || os(iOS) || !canImport(FoundationEssentials)
 		timer?.invalidate()
 		timer = nil
 #endif
@@ -80,7 +82,7 @@ extension VNCClipboardMonitor {
 	}
 }
 
-#if !canImport(FoundationEssentials)
+#if os(macOS) || os(iOS) || !canImport(FoundationEssentials)
 private extension VNCClipboardMonitor {
 	func timerDidFire(_ timer: Timer) {
 		guard let delegate,
@@ -89,6 +91,7 @@ private extension VNCClipboardMonitor {
 		}
 
 		guard delegate.clipboardMonitorShouldMonitor(self) else { // Should not monitor
+			acknowledgeCurrentChange()
 			return
 		}
 

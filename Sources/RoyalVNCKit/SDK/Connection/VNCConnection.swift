@@ -27,6 +27,11 @@ public final class VNCConnection: NSObjectOrAnyObject {
 #endif
 	public weak var delegate: VNCConnectionDelegate?
 
+    public weak var clipboardDelegate: VNCClipboardDelegate?
+    // Clipboard state is accessed only on the main queue.
+    var serverClipboardCapabilities: ExtendedClipboard?
+    var pendingClipboardText: String?
+
 #if canImport(ObjectiveC)
 	@objc
 #endif
@@ -169,8 +174,7 @@ public final class VNCConnection: NSObjectOrAnyObject {
 			VNCPseudoEncodingType.desktopSize.rawValue,
 			VNCPseudoEncodingType.desktopName.rawValue,
 			VNCPseudoEncodingType.cursor.rawValue,
-			// TODO: Implement
-//			VNCPseudoEncodingType.extendedClipboard.rawValue,
+			VNCPseudoEncodingType.extendedClipboard.rawValue,
             
             // TODO: Make configurable
 			VNCPseudoEncodingType.compressionLevel6.rawValue
