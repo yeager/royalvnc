@@ -24,6 +24,8 @@
 
   <PropertyGroup Label="Linux" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
     <_NativeLibrary>$(_SwiftBuildDir)$(_NativeArch)-unknown-linux-gnu\$(_NativeCfg)\libRoyalVNCKit.so</_NativeLibrary>
+    <!-- Swift 6.2 stores build products under out/Products/<configuration>. -->
+    <_NativeLibrary Condition="Exists('$(_SwiftBuildDir)out/Products/$(_NativeCfg)/libRoyalVNCKit.so')">$(_SwiftBuildDir)out/Products/$(_NativeCfg)/libRoyalVNCKit.so</_NativeLibrary>
   </PropertyGroup>
   <PropertyGroup Label="macOS" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <_NativeLibrary>$(_SwiftBuildDir)universal-apple-macosx\$(_NativeCfg)\libRoyalVNCKit.dylib</_NativeLibrary>
