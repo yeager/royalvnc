@@ -1,9 +1,30 @@
 #if os(macOS)
+import AppKit
 import CoreGraphics
 import XCTest
 @testable import RoyalVNCKit
 
 final class VNCKeyboardLayoutTests: XCTestCase {
+    func testUsesCharactersResolvedByTheActiveInputSource() {
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
+                                    modifierFlags: [.option], timestamp: 0,
+                                    windowNumber: 0, context: nil,
+                                    characters: "@", charactersIgnoringModifiers: "2",
+                                    isARepeat: false, keyCode: 19)!
+
+        XCTAssertEqual(VNCKeyEventTracker.resolvedCharacters(for: event), "@")
+    }
+
+    func testFallsBackWhenResolvedCharactersAreEmpty() {
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
+                                    modifierFlags: [.command], timestamp: 0,
+                                    windowNumber: 0, context: nil,
+                                    characters: "", charactersIgnoringModifiers: "c",
+                                    isARepeat: false, keyCode: 8)!
+
+        XCTAssertEqual(VNCKeyEventTracker.resolvedCharacters(for: event), "c")
+    }
+
     func testKeyUpReleasesTheSymbolSentForKeyDown() {
         var tracker = VNCKeyEventTracker()
 
@@ -57,7 +78,8 @@ final class VNCKeyboardLayoutTests: XCTestCase {
         let optionKeys = tracker.keyDown(for: CGKeyCode(optionKey.keyCode),
                                          characters: optionKey.charactersIgnoringModifiers)
 
-        let numberKeys = tracker.keyDown(for: CGKeyCode(19), characters: "2")
+        // The active macOS input source resolves Swedish Option+2 to @.
+        let numberKeys = tracker.keyDown(for: CGKeyCode(19), characters: "@")
         let releasedNumberKeys = tracker.keyUp(for: CGKeyCode(19))
 
         let optionUp = KeyboardModifiers(currentFlags: [], lastFlags: [.leftOption]).events
@@ -65,7 +87,7 @@ final class VNCKeyboardLayoutTests: XCTestCase {
         let releasedOptionKeys = tracker.keyUp(for: CGKeyCode(optionUp[0].keyCode))
 
         XCTAssertEqual(optionKeys.map(\.rawValue), [0xFFE9])
-        XCTAssertEqual(numberKeys.map(\.rawValue), [0x32])
+        XCTAssertEqual(numberKeys.map(\.rawValue), [0x40])
         XCTAssertEqual(releasedNumberKeys, numberKeys)
         XCTAssertEqual(releasedOptionKeys, optionKeys)
     }
