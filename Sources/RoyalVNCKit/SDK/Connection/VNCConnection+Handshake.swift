@@ -153,18 +153,12 @@ private extension VNCConnection {
 				}
 
 				let subtype = try await VNCProtocol.VeNCrypt.negotiate(
-					connection: connection,
-					allowUnverifiedTLSVNC: allowsUnverifiedVeNCryptTLSVNC
+					connection: connection
 				) { subtype in
-					try await tlsConnection.upgradeToTLS(
-						serverName: settings.hostname,
-						validatesCertificateChain: subtype != .tlsVNC
-					)
+					try await tlsConnection.upgradeToTLS(serverName: settings.hostname)
 				}
 				switch subtype {
 					case .x509VNC:
-						try await performVNCAuthentication()
-					case .tlsVNC:
 						try await performVNCAuthentication()
 					case .x509Plain:
 						try await performVeNCryptPlainAuthentication()

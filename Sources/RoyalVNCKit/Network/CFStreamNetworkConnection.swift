@@ -92,7 +92,7 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 		}
 	}
 
-	func upgradeToTLS(serverName: String, validatesCertificateChain: Bool) async throws {
+	func upgradeToTLS(serverName: String) async throws {
 		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
 			readQueue.async { [weak self] in
 				guard let self, let readStream, !didUpgradeToTLS else {
@@ -102,7 +102,7 @@ final class CFStreamNetworkConnection: TLSUpgradableNetworkConnection {
 
 				let settings: [CFString: Any] = [
 					kCFStreamSSLPeerName: serverName,
-					kCFStreamSSLValidatesCertificateChain: validatesCertificateChain,
+					kCFStreamSSLValidatesCertificateChain: true,
 					kCFStreamSSLLevel: kCFStreamSocketSecurityLevelNegotiatedSSL
 				]
 

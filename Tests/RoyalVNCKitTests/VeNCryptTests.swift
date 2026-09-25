@@ -45,12 +45,7 @@ final class VeNCryptTests: XCTestCase {
 			.x509Plain
 		)
 		XCTAssertNil(VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(from: [.tlsNone, .tlsVNC]))
-		XCTAssertEqual(
-			VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(
-				from: [.tlsVNC], allowUnverifiedTLSVNC: true
-			),
-			.tlsVNC
-		)
+		XCTAssertNil(VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(from: [.tlsVNC]))
 	}
 
 	func testWritesVersionAndSubtypeInNetworkOrder() async throws {
@@ -102,7 +97,7 @@ final class VeNCryptTests: XCTestCase {
 		XCTAssertEqual(connection.data, Data([0, 2, 0, 0, 1, 6]))
 	}
 
-	func testAnonymousTLSVNCRequiresExplicitOptIn() async throws {
+	func testAnonymousTLSVNCIsRejectedBecauseMacOSCannotNegotiateItsCipher() async throws {
 		let serverOffer = Data([
 			0, 2, // server version
 			0, // version acknowledgement
@@ -115,12 +110,6 @@ final class VeNCryptTests: XCTestCase {
 			try await VNCProtocol.VeNCrypt.negotiate(connection: defaultConnection) { _ in }
 		}
 
-		let optedInConnection = VeNCryptConnection(data: serverOffer)
-		let selected = try await VNCProtocol.VeNCrypt.negotiate(
-			connection: optedInConnection, allowUnverifiedTLSVNC: true
-		) { _ in }
-		XCTAssertEqual(selected, .tlsVNC)
-		XCTAssertEqual(optedInConnection.data, Data([0, 2, 0, 0, 1, 2]))
 	}
 }
 

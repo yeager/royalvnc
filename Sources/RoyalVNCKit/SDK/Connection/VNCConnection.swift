@@ -33,9 +33,6 @@ public final class VNCConnection: NSObjectOrAnyObject {
     /// Allows Tight security negotiation for servers that advertise TightVNC
     /// file transfer. Disabled by default to preserve existing security choice.
     public var prefersTightSecurityForFileTransfer = false
-    /// Allows VeNCrypt TLSVnc, whose anonymous TLS encrypts traffic without
-    /// authenticating the server. Disabled unless the user opts in per profile.
-    public var allowsUnverifiedVeNCryptTLSVNC = false
     // Clipboard state is accessed only on the main queue.
     var serverClipboardCapabilities: ExtendedClipboard?
     var pendingClipboardText: String?

@@ -57,7 +57,6 @@ extension VNCProtocol.VeNCrypt {
 	/// upgrade operation because the underlying RFB connection must stay open.
 	static func negotiate(
 		connection: NetworkConnection,
-		allowUnverifiedTLSVNC: Bool = false,
 		upgradeToTLS: (Subtype) async throws -> Void
 	) async throws -> Subtype {
 		let serverVersion = try await receiveVersion(connection: connection)
@@ -69,9 +68,7 @@ extension VNCProtocol.VeNCrypt {
 		try await receiveVersionAcknowledgement(connection: connection)
 
 		let offeredSubtypes = try await receiveSubtypes(connection: connection)
-		guard let selectedSubtype = preferredAuthenticatedTLSSubtype(
-			from: offeredSubtypes, allowUnverifiedTLSVNC: allowUnverifiedTLSVNC
-		) else {
+		guard let selectedSubtype = preferredAuthenticatedTLSSubtype(from: offeredSubtypes) else {
 			throw VNCError.authentication(.clientCouldNotDecideOnSecurityType)
 		}
 
@@ -111,13 +108,11 @@ extension VNCProtocol.VeNCrypt {
 		return subtypes
 	}
 
-	/// Selects a certificate-authenticated VeNCrypt subtype. Anonymous TLS and
-	/// unencrypted subtypes are never selected automatically.
-	static func preferredAuthenticatedTLSSubtype(from offeredSubtypes: [Subtype],
-											 allowUnverifiedTLSVNC: Bool = false) -> Subtype? {
+	/// Selects only certificate-authenticated VeNCrypt subtypes. macOS CFStream
+	/// cannot negotiate VeNCrypt's anonymous TLSVnc cipher suites.
+	static func preferredAuthenticatedTLSSubtype(from offeredSubtypes: [Subtype]) -> Subtype? {
 		if offeredSubtypes.contains(.x509VNC) { return .x509VNC }
 		if offeredSubtypes.contains(.x509Plain) { return .x509Plain }
-		if allowUnverifiedTLSVNC, offeredSubtypes.contains(.tlsVNC) { return .tlsVNC }
 		return nil
 	}
 
