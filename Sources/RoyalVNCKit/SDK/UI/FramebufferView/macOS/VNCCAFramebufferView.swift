@@ -493,7 +493,7 @@ extension VNCCAFramebufferView {
 		}
 
 		let keyCodes = keyEventTracker.keyDown(for: CGKeyCode(event.keyCode),
-										   characters: event.charactersIgnoringModifiers)
+										   characters: VNCKeyEventTracker.resolvedCharacters(for: event))
 
 		if keyCodes.isEmpty {
 			connection.logger.logError("Ignoring unconvertable key press (Key Code: \(event.keyCode))")

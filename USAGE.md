@@ -156,9 +156,10 @@ func connection(_ connection: VNCConnection,
 
 With `isClipboardRedirectionEnabled`, connections negotiate the RFB Extended
 Clipboard pseudo-encoding and exchange UTF-8 text when supported by the peer.
-Legacy peers continue to use Latin-1. Images, formatted text and file transfer are
-not implemented by this text extension. Text is limited to 1 MiB after CRLF
-normalization, including its terminating null byte.
+Legacy peers continue to use Latin-1. Images and formatted text are not
+implemented by this text extension. File transfer is a separate feature covered
+below. Text is limited to 1 MiB after CRLF normalization, including its
+terminating null byte.
 
 Assign a `VNCClipboardDelegate` to decide independently whether a connection may
 send or receive clipboard text. All callbacks run on the main queue. The delegate
@@ -179,6 +180,46 @@ sending, the text exceeds the limit, or the peer's encoding cannot represent it.
 For example, Unicode text sent to a legacy Latin-1 peer is rejected instead of
 silently clearing the remote clipboard. A `true` result means a message was queued,
 not that the peer has already delivered the text to an application.
+
+# File transfer
+
+File transfer uses legacy Tight interaction-capability messages. It is a
+separate RFB feature, not a clipboard payload. Opt in before connecting:
+
+```swift
+let connection = VNCConnection(settings: settings)
+connection.prefersTightSecurityForFileTransfer = true
+connection.fileTransferHandler = { event in
+    switch event {
+    case .fileList(let files):
+        print(files.map(\.name))
+    case .downloadData(let data):
+        // Append this bounded chunk to an application-managed staging file.
+        break
+    case .downloadFinished(let modificationTime):
+        // Finalize the staged file only after this event.
+        break
+    case .failed(let reason):
+        print("Transfer failed: \(reason)")
+    }
+}
+connection.connect()
+```
+
+After connecting, check `connection.canTransferFiles` before calling
+`requestFileList(directory:)`, `requestFileDownload(path:offset:)`, or
+`requestFileUpload(path:offset:)`. Upload data is sent in chunks of at most
+65,535 bytes with `sendFileUploadData(_:)`; finish with
+`finishFileUpload(modificationTime:)`. The SDK validates path and packet bounds.
+Applications must stage downloads safely, serialize operations on a connection,
+and confirm completion to the user.
+
+Support is limited to servers that advertise legacy Tight file-transfer
+capabilities during Tight security negotiation. The SDK supports no-tunnel mode
+and VNC password or no-auth subtypes; it does not establish Tight TLS tunnels.
+TightVNC 2.x uses a different file-transfer extension and is not compatible with
+this API. When the server does not advertise the required capabilities,
+`canTransferFiles` is `false` and file operations throw.
 
 Run `swift test` for bounded decoding, Unicode, malformed input, legacy fallback
 and policy tests. The optional `ClipboardInteropTests` expects a disposable

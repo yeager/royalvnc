@@ -103,12 +103,11 @@ private extension VNCClipboardMonitor {
 
 		lastChangeCount = currentChangeCount
 
-		guard let text = clipboard.text else { // No text
-			return
-		}
-
-		delegate.clipboardMonitor(self,
-								  didChangeText: text)
+        if let imageData = clipboard.imageData {
+            delegate.clipboardMonitor(self, didChangeImageData: imageData)
+        } else if let text = clipboard.text {
+            delegate.clipboardMonitor(self, didChangeText: text)
+        }
 	}
 }
 #endif

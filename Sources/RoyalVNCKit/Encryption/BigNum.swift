@@ -17,18 +17,32 @@ final class BigNum {
     init?(data: Data) {
         self.bigInt = .init(data)
     }
+
+    private init(_ bigInt: BigUInteger) {
+        self.bigInt = bigInt
+    }
+}
+
+extension BigNum {
+    static func randomNumber(lessThan limit: BigNum) -> BigNum {
+        .init(BigUInteger.randomInteger(lessThan: limit.bigInt))
+    }
+
+    static func randomNumber(lessThan limit: UInt64) -> BigNum {
+        .init(BigUInteger.randomInteger(lessThan: .init(limit)))
+    }
 }
 
 extension BigNum {
     var isZero: Bool {
         let isIt = self.bigInt == 0
-        
+
         return isIt
     }
 
     var bytesCount: Int32 {
         let count = self.bigInt.serialize().count
-        
+
         return .init(count)
     }
 
@@ -40,7 +54,7 @@ extension BigNum {
 
     func rand(range: BigNum) -> Bool {
         self.bigInt = CS.BigUInt.randomInteger(lessThan: range.bigInt)
-        
+
         return true
     }
 
@@ -49,14 +63,44 @@ extension BigNum {
                        x: BigNum,
                        p: BigNum) -> Bool {
         y.bigInt = g.bigInt.power(x.bigInt, modulus: p.bigInt)
-        
+
         return true
+    }
+
+    func power(exponent: BigNum, modulus: BigNum) -> BigNum {
+        let result = bigInt.power(exponent.bigInt,
+                                  modulus: modulus.bigInt)
+
+        return .init(result)
     }
 
     func bigEndianData() -> Data? {
         let data = self.bigInt.serialize()
-        
+
         return data
+    }
+
+    func fixedWidthBigEndianData(length: Int) -> Data? {
+        guard length > 0,
+              let minimalData = bigEndianData(),
+              minimalData.count <= length else {
+            return nil
+        }
+
+        guard minimalData.count < length else {
+            return minimalData
+        }
+
+        var paddedData = Data(repeating: 0,
+                              count: length - minimalData.count)
+
+        paddedData.append(minimalData)
+
+        return paddedData
+    }
+
+    func isLessThan(_ value: UInt64) -> Bool {
+        bigInt < value
     }
 }
 

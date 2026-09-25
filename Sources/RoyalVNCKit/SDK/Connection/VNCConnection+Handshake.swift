@@ -103,16 +103,21 @@ private extension VNCConnection {
 
 		let supportedSecurityTypes = supportedTypes.securityTypes
 
-		if supportedSecurityTypes.contains(.none) {
-			chosenSecurityType = .none
+		if supportedSecurityTypes.contains(.veNCrypt),
+			connection is any TLSUpgradableNetworkConnection {
+			chosenSecurityType = .veNCrypt
 		} else if supportedSecurityTypes.contains(.diffieHellman) {
 			chosenSecurityType = .diffieHellman
+		} else if prefersTightSecurityForFileTransfer && supportedSecurityTypes.contains(.tight) {
+			// Tight is selected only by explicit opt-in: negotiation may reject
+			// tunnels that this client cannot safely establish.
+			chosenSecurityType = .tight
 		} else if supportedSecurityTypes.contains(.ultraVNCMSLogonII) {
 			chosenSecurityType = .ultraVNCMSLogonII
 		} else if supportedSecurityTypes.contains(.vnc) {
 			chosenSecurityType = .vnc
-		} else if supportedSecurityTypes.contains(.tight) {
-			chosenSecurityType = .tight
+		} else if supportedSecurityTypes.contains(.none) {
+			chosenSecurityType = .none
 		} else {
 			chosenSecurityType = .invalid
 		}
@@ -124,6 +129,7 @@ private extension VNCConnection {
 
 		try await sendAuthenticationData(securityType: chosenSecurityType)
 	}
+
 
 	func sendAuthenticationData(securityType: VNCProtocol.SecurityType) async throws {
 		do {
@@ -139,6 +145,26 @@ private extension VNCConnection {
 		let shouldRequestSecurityTypeResult: Bool
 
 		switch securityType {
+			case .veNCrypt:
+				shouldRequestSecurityTypeResult = true
+
+				guard let tlsConnection = connection as? any TLSUpgradableNetworkConnection else {
+					throw VNCError.authentication(.clientCouldNotDecideOnSecurityType)
+				}
+
+				let subtype = try await VNCProtocol.VeNCrypt.negotiate(
+					connection: connection
+				) { subtype in
+					try await tlsConnection.upgradeToTLS(serverName: settings.hostname)
+				}
+				switch subtype {
+					case .x509VNC:
+						try await performVNCAuthentication()
+					case .x509Plain:
+						try await performVeNCryptPlainAuthentication()
+					default:
+						throw VNCError.authentication(.clientCouldNotDecideOnSecurityType)
+				}
 			case .none:
 				if let protocolVersion = state.agreedProtocolVersion {
 					// Only servers 3.8+ send a security result when no authentication is configured
@@ -158,11 +184,11 @@ private extension VNCConnection {
 				shouldRequestSecurityTypeResult = true
 
 				try await performUltraVNCMSLogonIIAuthentication()
-//			case .tight:
-//				shouldRequestSecurityTypeResult = true
-//				isTightSecurityEnabled = true
-//
-//				// TODO: Implement
+			case .tight:
+				shouldRequestSecurityTypeResult = true
+				state.isTightSecurityEnabled = true
+				let authentication = try await TightSecurity.negotiate(connection: connection)
+				if authentication == .vnc { try await performVNCAuthentication() }
 			default:
 				shouldRequestSecurityTypeResult = true
 		}
@@ -181,6 +207,11 @@ private extension VNCConnection {
 
 		try await auth.send(connection: connection,
 							credential: credential)
+	}
+
+	func performVeNCryptPlainAuthentication() async throws {
+		let credential = try await askDelegateForUsernamePasswordCredential(authenticationType: .veNCryptPlain)
+		try await VNCProtocol.VeNCryptPlainAuthentication.send(connection: connection, credential: credential)
 	}
 
 	func performARDAuthentication() async throws {
@@ -264,6 +295,9 @@ private extension VNCConnection {
 		state.framebufferWidth = serverInit.framebufferWidth
 		state.framebufferHeight = serverInit.framebufferHeight
 		state.desktopName = serverInit.name
+		supportsTightFileDownload = serverInit.tightCapabilities?.supportsTightFileDownload ?? false
+		supportsTightFileUpload = serverInit.tightCapabilities?.supportsTightFileUpload ?? false
+		supportsTightFileTransfer = supportsTightFileDownload && supportsTightFileUpload
 
 		let serverPixelFormat = serverInit.pixelFormat
 
