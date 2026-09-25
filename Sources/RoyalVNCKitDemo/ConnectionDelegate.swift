@@ -37,6 +37,8 @@ final class ConnectionDelegate: VNCConnectionDelegate {
                 authenticationTypeString = "Apple Remote Desktop"
             case .ultraVNCMSLogonII:
                 authenticationTypeString = "UltraVNC MS Logon II"
+            case .veNCryptPlain:
+                authenticationTypeString = "VeNCrypt X509Plain"
             @unknown default:
                 fatalError("Unknown authentication type: \(authenticationType)")
         }

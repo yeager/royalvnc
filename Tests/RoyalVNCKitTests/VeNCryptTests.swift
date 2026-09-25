@@ -33,14 +33,24 @@ final class VeNCryptTests: XCTestCase {
 		}
 	}
 
-	func testOnlyCertificateAuthenticatedVNCIsSelectedByDefault() {
+	func testCertificateAuthenticatedSubtypesAreSelectedAndPreferVNCAuth() {
 		XCTAssertEqual(
 			VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(
-				from: [.tlsNone, .tlsVNC, .x509VNC]
+				from: [.tlsNone, .tlsVNC, .x509Plain, .x509VNC]
 			),
 			.x509VNC
 		)
+		XCTAssertEqual(
+			VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(from: [.tlsPlain, .x509Plain]),
+			.x509Plain
+		)
 		XCTAssertNil(VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(from: [.tlsNone, .tlsVNC]))
+		XCTAssertEqual(
+			VNCProtocol.VeNCrypt.preferredAuthenticatedTLSSubtype(
+				from: [.tlsVNC], allowUnverifiedTLSVNC: true
+			),
+			.tlsVNC
+		)
 	}
 
 	func testWritesVersionAndSubtypeInNetworkOrder() async throws {
@@ -70,6 +80,47 @@ final class VeNCryptTests: XCTestCase {
 		XCTAssertEqual(selected, .x509VNC)
 		XCTAssertEqual(upgradedSubtype, .x509VNC)
 		XCTAssertEqual(connection.data, Data([0, 2, 0, 0, 1, 5]))
+	}
+
+	func testNegotiatesX509PlainWhenItIsTheOnlyVerifiedCredentialSubtype() async throws {
+		let connection = VeNCryptConnection(data: Data([
+			0, 2, // server version
+			0, // version acknowledgement
+			2, // subtype count
+			0, 0, 1, 9, // TLSIdent (unsupported and anonymous)
+			0, 0, 1, 6, // X509Plain
+			1 // TLS subtype acknowledgement
+		]))
+		var upgradedSubtype: VNCProtocol.VeNCrypt.Subtype?
+
+		let selected = try await VNCProtocol.VeNCrypt.negotiate(connection: connection) { subtype in
+			upgradedSubtype = subtype
+		}
+
+		XCTAssertEqual(selected, .x509Plain)
+		XCTAssertEqual(upgradedSubtype, .x509Plain)
+		XCTAssertEqual(connection.data, Data([0, 2, 0, 0, 1, 6]))
+	}
+
+	func testAnonymousTLSVNCRequiresExplicitOptIn() async throws {
+		let serverOffer = Data([
+			0, 2, // server version
+			0, // version acknowledgement
+			1, // subtype count
+			0, 0, 1, 2, // TLSVNC
+			1 // TLS subtype acknowledgement
+		])
+		let defaultConnection = VeNCryptConnection(data: serverOffer)
+		await XCTAssertThrowsErrorAsync {
+			try await VNCProtocol.VeNCrypt.negotiate(connection: defaultConnection) { _ in }
+		}
+
+		let optedInConnection = VeNCryptConnection(data: serverOffer)
+		let selected = try await VNCProtocol.VeNCrypt.negotiate(
+			connection: optedInConnection, allowUnverifiedTLSVNC: true
+		) { _ in }
+		XCTAssertEqual(selected, .tlsVNC)
+		XCTAssertEqual(optedInConnection.data, Data([0, 2, 0, 0, 1, 2]))
 	}
 }
 

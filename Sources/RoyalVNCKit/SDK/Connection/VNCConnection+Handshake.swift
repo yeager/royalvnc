@@ -152,11 +152,25 @@ private extension VNCConnection {
 					throw VNCError.authentication(.clientCouldNotDecideOnSecurityType)
 				}
 
-				_ = try await VNCProtocol.VeNCrypt.negotiate(connection: connection) { _ in
-					try await tlsConnection.upgradeToTLS(serverName: settings.hostname)
+				let subtype = try await VNCProtocol.VeNCrypt.negotiate(
+					connection: connection,
+					allowUnverifiedTLSVNC: allowsUnverifiedVeNCryptTLSVNC
+				) { subtype in
+					try await tlsConnection.upgradeToTLS(
+						serverName: settings.hostname,
+						validatesCertificateChain: subtype != .tlsVNC
+					)
 				}
-
-				try await performVNCAuthentication()
+				switch subtype {
+					case .x509VNC:
+						try await performVNCAuthentication()
+					case .tlsVNC:
+						try await performVNCAuthentication()
+					case .x509Plain:
+						try await performVeNCryptPlainAuthentication()
+					default:
+						throw VNCError.authentication(.clientCouldNotDecideOnSecurityType)
+				}
 			case .none:
 				if let protocolVersion = state.agreedProtocolVersion {
 					// Only servers 3.8+ send a security result when no authentication is configured
@@ -199,6 +213,11 @@ private extension VNCConnection {
 
 		try await auth.send(connection: connection,
 							credential: credential)
+	}
+
+	func performVeNCryptPlainAuthentication() async throws {
+		let credential = try await askDelegateForUsernamePasswordCredential(authenticationType: .veNCryptPlain)
+		try await VNCProtocol.VeNCryptPlainAuthentication.send(connection: connection, credential: credential)
 	}
 
 	func performARDAuthentication() async throws {
