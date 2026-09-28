@@ -1,8 +1,4 @@
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
 import Foundation
-#endif
 
 @_implementationOnly import Z
 
@@ -10,6 +6,7 @@ import Foundation
 /// See https://github.com/rfbproto/rfbproto/blob/master/rfbproto.rst#extended-clipboard-pseudo-encoding
 struct ExtendedClipboard {
     static let text: UInt32 = 1
+    static let dib: UInt32 = 1 << 3
     static let caps: UInt32 = 1 << 24
     static let request: UInt32 = 1 << 25
     static let peek: UInt32 = 1 << 26
@@ -17,11 +14,13 @@ struct ExtendedClipboard {
     static let provide: UInt32 = 1 << 28
     static let actions: UInt32 = caps | request | peek | notify | provide
     static let maximumTextBytes = 1024 * 1024
-    static let maximumPacketBytes = maximumTextBytes + 4096
+    static let maximumImageBytes = 8 * 1024 * 1024
+    static let maximumPacketBytes = maximumImageBytes + 4096
 
     let flags: UInt32
     var sizes: [UInt32: UInt32] = [:]
     var textValue: String?
+    var imageData: Data?
     var formats: UInt32 { flags & 0xffff }
     var action: UInt32 { flags & 0xff000000 }
 
@@ -55,6 +54,9 @@ struct ExtendedClipboard {
                           let text = String(data: bytes.dropLast(), encoding: .utf8),
                           !text.contains("\0") else { throw invalid() }
                     result.textValue = text.replacingOccurrences(of: "\r\n", with: "\n")
+                } else if bit == 3 {
+                    guard Self.isValidDIBV5(bytes) else { throw invalid() }
+                    result.imageData = bytes
                 }
             }
             guard cursor == plain.count else { throw invalid() }
@@ -74,15 +76,67 @@ struct ExtendedClipboard {
                 result.append(sizes[1 << bit] ?? 0, bigEndian: true)
             }
         } else if action == Self.provide {
-            guard formats == Self.text, let textValue, let text = Self.textBytes(textValue) else { throw Self.invalid() }
+            let supportedFormats = Self.text | Self.dib
+            guard formats != 0, formats & ~supportedFormats == 0 else { throw Self.invalid() }
             var plain = Data()
-            plain.append(UInt32(text.count), bigEndian: true)
-            plain.append(text)
+            for format in [Self.text, Self.dib] where formats & format != 0 {
+                let bytes: Data
+                if format == Self.text, let textValue, let text = Self.textBytes(textValue) {
+                    bytes = text
+                } else if format == Self.dib, let imageData, Self.isValidDIBV5(imageData) {
+                    bytes = imageData
+                } else {
+                    throw Self.invalid()
+                }
+                plain.append(UInt32(bytes.count), bigEndian: true)
+                plain.append(bytes)
+            }
             result.append(try Self.deflate(plain))
         } else {
             guard [Self.request, Self.peek, Self.notify].contains(action) else { throw Self.invalid() }
         }
         return result
+    }
+
+    /// Validates the bounded 32-bit, uncompressed subset used by macOS clipboard
+    /// conversion. The RFB format is a BITMAPV5HEADER without a BMP file header.
+    static func isValidDIBV5(_ data: Data) -> Bool {
+        guard data.count >= 124,
+              littleUInt32(data, at: 0) == 124,
+              littleUInt16(data, at: 12) == 1,
+              littleUInt16(data, at: 14) == 32,
+              littleUInt32(data, at: 112) == 0,
+              littleUInt32(data, at: 116) == 0 else { return false }
+        let width = Int32(bitPattern: littleUInt32(data, at: 4))
+        let rawHeight = Int32(bitPattern: littleUInt32(data, at: 8))
+        guard width > 0, rawHeight != 0, rawHeight != Int32.min else { return false }
+        let compression = littleUInt32(data, at: 16)
+        guard compression == 0 || compression == 3 || compression == 6 else { return false }
+        let rowBytes = UInt64(width) * 4
+        let pixelBytes = rowBytes * UInt64(abs(rawHeight))
+        guard pixelBytes <= UInt64(maximumImageBytes),
+              data.count == 124 + Int(pixelBytes) else { return false }
+        let declaredImageBytes = littleUInt32(data, at: 20)
+        guard declaredImageBytes == 0 || UInt64(declaredImageBytes) == pixelBytes else { return false }
+        if compression == 3 || compression == 6 {
+            let masks = stride(from: 40, through: 52, by: 4).map { littleUInt32(data, at: $0) }
+            guard masks[0] != 0, masks[1] != 0, masks[2] != 0,
+                  masks.indices.allSatisfy({ index in
+                      masks[index] == 0 || masks.indices.allSatisfy { other in
+                          other <= index || masks[index] & masks[other] == 0
+                      }
+                  }),
+                  compression != 6 || masks[3] != 0 else { return false }
+        }
+        return true
+    }
+
+    private static func littleUInt16(_ data: Data, at offset: Int) -> UInt16 {
+        data.withUnsafeBytes { UInt16(littleEndian: $0.loadUnaligned(fromByteOffset: offset, as: UInt16.self)) }
+    }
+
+    private static func littleUInt32(_ data: Data, at offset: Int) -> UInt32 {
+        data.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self)) }
     }
 
     static func readUInt32(_ data: Data, offset: inout Int) throws -> UInt32 {
@@ -112,7 +166,7 @@ struct ExtendedClipboard {
         var stream = z_stream()
         guard inflateInit_(&stream, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else { throw invalid() }
         defer { inflateEnd(&stream) }
-        var output = Data(count: maximumTextBytes + 64)
+        var output = Data(count: maximumPacketBytes + 64)
         let status = output.withUnsafeMutableBytes { destination in
             data.withUnsafeBytes { source in
                 stream.next_in = UnsafeMutablePointer(mutating: source.bindMemory(to: Bytef.self).baseAddress!)

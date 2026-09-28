@@ -31,31 +31,50 @@ extension VNCConnection {
         if let extended = message.extended {
             if extended.flags & ExtendedClipboard.caps != 0 {
                 serverClipboardCapabilities = extended
-                enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.actions | ExtendedClipboard.text,
-                                                   sizes: [ExtendedClipboard.text: 0]))
+                let formats = ExtendedClipboard.text | ExtendedClipboard.dib
+                enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.actions | formats,
+                                                   sizes: [ExtendedClipboard.text: 0, ExtendedClipboard.dib: 0]))
                 // A previous legacy attempt might have rejected non-Latin-1 text.
                 clipboardMonitor.requestCurrentChange()
             } else if extended.action == ExtendedClipboard.request {
-                guard maySendClipboard, extended.formats & ExtendedClipboard.text != 0,
-                      let text = pendingClipboardText ?? clipboard.text else { return }
-                enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.provide | ExtendedClipboard.text, textValue: text))
+                guard maySendClipboard else { return }
+                if extended.formats & ExtendedClipboard.dib != 0,
+                   let image = pendingClipboardImage ?? clipboard.imageData,
+                   ExtendedClipboard.isValidDIBV5(image) {
+                    enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.provide | ExtendedClipboard.dib,
+                                                       imageData: image))
+                } else if extended.formats & ExtendedClipboard.text != 0,
+                          let text = pendingClipboardText ?? clipboard.text {
+                    enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.provide | ExtendedClipboard.text,
+                                                       textValue: text))
+                }
             } else if extended.action == ExtendedClipboard.peek {
                 guard maySendClipboard else { return }
-                let available: UInt32 = clipboard.text == nil ? 0 : ExtendedClipboard.text
+                var available: UInt32 = clipboard.text == nil ? 0 : ExtendedClipboard.text
+                if clipboard.imageData != nil { available |= ExtendedClipboard.dib }
                 enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.notify | available))
             } else if extended.action == ExtendedClipboard.notify {
                 guard clipboardDelegate?.connectionShouldReceiveClipboard(self) ?? true,
-                      extended.formats & ExtendedClipboard.text != 0,
+                      extended.formats & (ExtendedClipboard.text | ExtendedClipboard.dib) != 0,
                       (serverClipboardCapabilities?.flags ?? 0) & ExtendedClipboard.request != 0 else { return }
-                enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.request | ExtendedClipboard.text))
+                let selectedFormat = extended.formats & ExtendedClipboard.dib != 0
+                    ? ExtendedClipboard.dib : ExtendedClipboard.text
+                enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.request | selectedFormat))
             }
         }
-        guard let text = message.text,
-              clipboardDelegate?.connectionShouldReceiveClipboard(self) ?? true else { return }
-        if let clipboardDelegate {
-            clipboardDelegate.connection(self, didReceiveClipboardText: text)
-        } else {
-            clipboard.text = text
+        guard clipboardDelegate?.connectionShouldReceiveClipboard(self) ?? true else { return }
+        if let image = message.extended?.imageData {
+            if let clipboardDelegate {
+                clipboardDelegate.connection(self, didReceiveClipboardImageData: image)
+            } else {
+                clipboard.imageData = image
+            }
+        } else if let text = message.text {
+            if let clipboardDelegate {
+                clipboardDelegate.connection(self, didReceiveClipboardText: text)
+            } else {
+                clipboard.text = text
+            }
         }
         // Receiving text must not echo it back on the next monitor tick.
         clipboardMonitor.acknowledgeCurrentChange()
@@ -87,6 +106,25 @@ extension VNCConnection {
         enqueueClientCutTextMessage(text)
         return true
     }
+
+    @discardableResult
+    func sendClipboardImageOnMainQueue(_ imageData: Data) -> Bool {
+        guard settings.isClipboardRedirectionEnabled, connectionState.status == .connected,
+              clipboardDelegate?.connectionShouldSendClipboardImage(self) ?? true,
+              ExtendedClipboard.isValidDIBV5(imageData),
+              let capabilities = serverClipboardCapabilities,
+              capabilities.formats & ExtendedClipboard.dib != 0 else { return false }
+        pendingClipboardImage = imageData
+        if capabilities.flags & ExtendedClipboard.notify != 0 {
+            return enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.notify | ExtendedClipboard.dib))
+        }
+        if capabilities.flags & ExtendedClipboard.provide != 0,
+           UInt32(imageData.count) <= (capabilities.sizes[ExtendedClipboard.dib] ?? 0) {
+            return enqueueClipboard(ExtendedClipboard(flags: ExtendedClipboard.provide | ExtendedClipboard.dib,
+                                                       imageData: imageData))
+        }
+        return false
+    }
 }
 
 public extension VNCConnection {
@@ -96,6 +134,7 @@ public extension VNCConnection {
     func resetClipboardSynchronization() {
         dispatchPrecondition(condition: .onQueue(.main))
         pendingClipboardText = nil
+        pendingClipboardImage = nil
         clipboardMonitor.acknowledgeCurrentChange()
     }
 
@@ -114,5 +153,8 @@ extension VNCConnection: VNCClipboardMonitorDelegate {
     func clipboardMonitorShouldMonitor(_ clipboardMonitor: VNCClipboardMonitor) -> Bool { maySendClipboard }
     func clipboardMonitor(_ clipboardMonitor: VNCClipboardMonitor, didChangeText text: String) {
         sendClipboardOnMainQueue(text)
+    }
+    func clipboardMonitor(_ clipboardMonitor: VNCClipboardMonitor, didChangeImageData imageData: Data) {
+        sendClipboardImageOnMainQueue(imageData)
     }
 }

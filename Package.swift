@@ -77,13 +77,17 @@ let package = Package(
                 .unsafeFlags([
                     "-enable-library-evolution"
                 ])
+            ],
+
+            linkerSettings: [
+                .linkedFramework("CFNetwork", .when(platforms: [
+                    .macOS, .iOS, .macCatalyst, .tvOS, .visionOS
+                ]))
             ]
         ),
 
         d3desTarget,
         zTarget,
-        .testTarget(name: "RoyalVNCKitTests", dependencies: ["RoyalVNCKit"]),
-
         .executableTarget(
             name: "RoyalVNCKitDemo",
             dependencies: [ "RoyalVNCKit" ]
@@ -91,6 +95,11 @@ let package = Package(
 
         .executableTarget(
             name: "RoyalVNCKitCDemo",
+            dependencies: [ "RoyalVNCKit" ]
+        ),
+
+        .testTarget(
+            name: "RoyalVNCKitTests",
             dependencies: [ "RoyalVNCKit" ]
         )
     ]

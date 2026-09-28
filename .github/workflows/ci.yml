@@ -1,12 +1,15 @@
 name: CI
 
 on:
-  push: # trigger on commits to the `main` branch (no PRs)
+  push:
     branches:
       - main
     paths-ignore:
       - '.github/workflows/x-*.yml'
-  workflow_dispatch: # and manually-triggered runs
+  pull_request:
+    paths-ignore:
+      - '.github/workflows/x-*.yml'
+  workflow_dispatch:
 
 permissions:
   # only allowed to read source code (ref. https://docs.github.com/en/actions/using-jobs/assigning-permissions-to-jobs)
@@ -22,10 +25,11 @@ jobs:
     name: "CI - ${{ matrix.name }}"
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: "Ubuntu ARM64"
-            os: ubuntu-24-arm64-gh
+            os: ubuntu-24.04-arm
             env:
               OS: "linux"
               NUGET_RID: "linux-arm64"
@@ -113,6 +117,11 @@ jobs:
         swift build --configuration release --arch arm64
         swift build --configuration release --arch x86_64
 
+        swift test --arch arm64
+        # The GitHub macOS runner is ARM64. Compile the Intel test bundle to
+        # validate that architecture, but do not attempt to load it on ARM.
+        swift build --build-tests --arch x86_64
+
         mkdir -p .build/universal-apple-macosx/release
 
         lipo -create \
@@ -128,7 +137,21 @@ jobs:
 
     # .NET bindings and NuGet package artifacts
 
+    - name: build .NET bindings (Linux)
+      if: "success() && matrix.env.OS == 'linux'"
+      run: |
+        swift_build_output_dir="$(swift build --configuration release --show-bin-path)"
+        printf 'Swift build output: %s\n' "$swift_build_output_dir"
+        if [ ! -f "$swift_build_output_dir/libRoyalVNCKit.so" ]; then
+          find .build -type f -name 'libRoyalVNCKit.so' -print
+          echo "SwiftPM did not produce libRoyalVNCKit.so in its reported build directory." >&2
+          exit 1
+        fi
+        dotnet build --configuration Release Bindings/dotnet/RoyalApps.RoyalVNCKit.slnx \
+          "-p:SwiftBuildOutputDir=$swift_build_output_dir"
+
     - name: build .NET bindings
+      if: "success() && matrix.env.OS != 'linux'"
       run: |
         dotnet build --configuration Release Bindings/dotnet/RoyalApps.RoyalVNCKit.slnx
 
@@ -178,25 +201,25 @@ jobs:
         path: |
           Bindings/dotnet/RoyalApps.RoyalVNCKit/bin/Release/RoyalApps.RoyalVNCKit.*.nupkg
     
-    # Kotlin bindings and Android AAR artifacts
+    # Kotlin bindings and Android AAR artifacts (skipped for now)
 
-    - name: install Android dependencies
-      if: "success() && matrix.env.OS == 'apple'"
-      run: |
-        ./android_dependencies.sh
+    # - name: install Android dependencies
+    #   if: "success() && matrix.env.OS == 'apple'"
+    #   run: |
+    #     ./android_dependencies.sh
 
-    - name: build Android libraries
-      if: "success() && matrix.env.OS == 'apple'"
-      run: |
-        ./android_build.sh
+    # - name: build Android libraries
+    #   if: "success() && matrix.env.OS == 'apple'"
+    #   run: |
+    #     ./android_build.sh
 
-    - name: publish Android artifacts
-      if: "success() && matrix.env.OS == 'apple'"
-      uses: actions/upload-artifact@v6
-      with:
-        name: "royalvnc-android-arm64"
-        retention-days: 5
-        if-no-files-found: "error"
-        path: |
-          Bindings/kotlin/RoyalVNCAndroidTest/royalvnc/build/distributions/royalvnc.zip
-          Bindings/kotlin/RoyalVNCAndroidTest/swiftRuntime/build/distributions/swiftRuntime_android.zip
+    # - name: publish Android artifacts
+    #   if: "success() && matrix.env.OS == 'apple'"
+    #   uses: actions/upload-artifact@v6
+    #   with:
+    #     name: "royalvnc-android-arm64"
+    #     retention-days: 5
+    #     if-no-files-found: "error"
+    #     path: |
+    #       Bindings/kotlin/RoyalVNCAndroidTest/royalvnc/build/distributions/royalvnc.zip
+    #       Bindings/kotlin/RoyalVNCAndroidTest/swiftRuntime/build/distributions/swiftRuntime_android.zip

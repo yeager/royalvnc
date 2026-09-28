@@ -24,6 +24,9 @@
 
   <PropertyGroup Label="Linux" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
     <_NativeLibrary>$(_SwiftBuildDir)$(_NativeArch)-unknown-linux-gnu\$(_NativeCfg)\libRoyalVNCKit.so</_NativeLibrary>
+    <_NativeLibrary Condition="'$(SwiftBuildOutputDir)' != ''">$(SwiftBuildOutputDir)/libRoyalVNCKit.so</_NativeLibrary>
+    <_NativeLibrary Condition="'$(SwiftBuildOutputDir)' == '' and Exists('$(_SwiftBuildDir)out/Products/$(Configuration)-linux/libRoyalVNCKit.so')">$(_SwiftBuildDir)out/Products/$(Configuration)-linux/libRoyalVNCKit.so</_NativeLibrary>
+    <_NativeLibrary Condition="'$(SwiftBuildOutputDir)' == '' and Exists('$(_SwiftBuildDir)out/Products/$(Configuration)/libRoyalVNCKit.so')">$(_SwiftBuildDir)out/Products/$(Configuration)/libRoyalVNCKit.so</_NativeLibrary>
   </PropertyGroup>
   <PropertyGroup Label="macOS" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <_NativeLibrary>$(_SwiftBuildDir)universal-apple-macosx\$(_NativeCfg)\libRoyalVNCKit.dylib</_NativeLibrary>

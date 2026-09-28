@@ -11,6 +11,7 @@ public enum VNCAuthenticationType: Int {
 	case vnc
 	case appleRemoteDesktop
 	case ultraVNCMSLogonII
+	case veNCryptPlain
 }
 
 public extension VNCAuthenticationType {
@@ -22,6 +23,8 @@ public extension VNCAuthenticationType {
 				true
 			case .ultraVNCMSLogonII:
 				true
+			case .veNCryptPlain:
+				true
 		}
 	}
 
@@ -32,6 +35,8 @@ public extension VNCAuthenticationType {
 			case .appleRemoteDesktop:
 				true
 			case .ultraVNCMSLogonII:
+				true
+			case .veNCryptPlain:
 				true
 		}
 	}
