@@ -26,6 +26,7 @@ final class VNCClipboardMonitor {
 #endif
 
 	private var lastChangeCount = 0
+    private var monitoringGeneration = UUID()
 
 	init(clipboard: VNCClipboard,
 		 monitoringInterval: TimeInterval,
@@ -54,8 +55,10 @@ extension VNCClipboardMonitor {
 			return
 		}
 
+        let generation = monitoringGeneration
 		DispatchQueue.main.async { [weak self] in
-			guard let self else { return }
+            // A stop or a newer start invalidates this deferred timer creation.
+            guard let self, self.monitoringGeneration == generation else { return }
 
             let timer = Timer.scheduledTimer(withTimeInterval: self.monitoringInterval,
                                              repeats: true,
@@ -70,6 +73,7 @@ extension VNCClipboardMonitor {
 	}
 
 	func stopMonitoring() {
+        monitoringGeneration = UUID()
 #if !canImport(FoundationEssentials)
 		timer?.invalidate()
 		timer = nil
