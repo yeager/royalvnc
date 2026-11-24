@@ -434,7 +434,7 @@ extension VNCCAFramebufferView {
     }
 
     private func handleMouseButtonUp(_ button: VNCMouseButton, with event: NSEvent) {
-        guard pressedMouseButtonRawValues.remove(button.rawValue) != nil,
+        guard pressedMouseButtonRawValues.contains(button.rawValue),
               let connection else {
             return
         }
@@ -444,6 +444,7 @@ extension VNCCAFramebufferView {
 
         guard let position else { return }
         connection.mouseButtonUp(button, x: position.x, y: position.y)
+        pressedMouseButtonRawValues.remove(button.rawValue)
     }
 
     private func releasePressedMouseButtons() {
