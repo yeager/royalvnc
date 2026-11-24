@@ -101,6 +101,8 @@ public final class VNCCAFramebufferView: NSView, VNCFramebufferView {
 	private var displayLink: DisplayLink?
 	private var trackingArea: NSTrackingArea?
 	private var previousHotKeyMode: UnsafeMutableRawPointer?
+    private var pressedMouseButtonRawValues = Set<Int>()
+    private var lastValidMousePosition: (x: UInt16, y: UInt16)?
     
     private static let enableMetalRendering = true
     
@@ -259,6 +261,7 @@ public final class VNCCAFramebufferView: NSView, VNCFramebufferView {
     }
 
 	public override func resignFirstResponder() -> Bool {
+        releasePressedMouseButtons()
         deregisterHotKeys()
 
         return true
@@ -349,7 +352,7 @@ private extension VNCCAFramebufferView {
 extension VNCCAFramebufferView {
 	func handleMouseMoved(with event: NSEvent) {
 		guard let connection,
-              let position = scaledContentRelativePosition(of: event) else {
+              let position = rememberedMousePosition(of: event) else {
             return
         }
 
@@ -360,98 +363,103 @@ extension VNCCAFramebufferView {
 		window?.makeFirstResponder(self)
 		becomeFirstResponder()
 
-        guard let connection,
-              let position = scaledContentRelativePosition(of: event) else {
-            return
-        }
-
-        connection.mouseButtonDown(.left,
-                                   x: position.x, y: position.y)
+        handleMouseButtonDown(.left, with: event)
 	}
 
 	func handleMouseDragged(with event: NSEvent) {
-        guard let connection,
-              let position = scaledContentRelativePosition(of: event) else {
-            return
-        }
-
-        connection.mouseButtonDown(.left,
-                                   x: position.x, y: position.y)
+        handleMouseButtonDragged(.left, with: event)
 	}
 
 	func handleMouseUp(with event: NSEvent) {
-        guard let connection,
-              let position = scaledContentRelativePosition(of: event) else {
-            return
-        }
-
-        connection.mouseButtonUp(.left,
-                                 x: position.x, y: position.y)
+        handleMouseButtonUp(.left, with: event)
 	}
 
 	func handleRightMouseDown(with event: NSEvent) {
-        guard let connection,
-              let position = scaledContentRelativePosition(of: event) else {
-            return
-        }
-
-        connection.mouseButtonDown(.right,
-                                   x: position.x, y: position.y)
+        handleMouseButtonDown(.right, with: event)
 	}
 
 	func handleRightMouseDragged(with event: NSEvent) {
-        guard let connection,
-              let position = scaledContentRelativePosition(of: event) else {
-            return
-        }
-
-        connection.mouseButtonDown(.right,
-                                   x: position.x, y: position.y)
+        handleMouseButtonDragged(.right, with: event)
 	}
 
 	func handleRightMouseUp(with event: NSEvent) {
-        guard let connection,
-              let position = scaledContentRelativePosition(of: event) else {
-            return
-        }
-
-        connection.mouseButtonUp(.right,
-                                 x: position.x, y: position.y)
+        handleMouseButtonUp(.right, with: event)
 	}
 
 	func handleOtherMouseDown(with event: NSEvent) {
 		guard isMiddleButton(event: event) else { return }
 
-        guard let connection,
-              let position = scaledContentRelativePosition(of: event) else {
-            return
-        }
-
-        connection.mouseButtonDown(.middle,
-                                   x: position.x, y: position.y)
+        handleMouseButtonDown(.middle, with: event)
 	}
 
 	func handleOtherMouseDragged(with event: NSEvent) {
-		guard let connection,
-              isMiddleButton(event: event),
-              let position = scaledContentRelativePosition(of: event) else {
-            return
-        }
-
-        connection.mouseButtonDown(.middle,
-                                   x: position.x, y: position.y)
+		guard isMiddleButton(event: event) else { return }
+        handleMouseButtonDragged(.middle, with: event)
 	}
 
 	func handleOtherMouseUp(with event: NSEvent) {
-		guard let connection,
-              isMiddleButton(event: event),
-              let position = scaledContentRelativePosition(of: event) else {
+		guard isMiddleButton(event: event) else { return }
+        handleMouseButtonUp(.middle, with: event)
+	}
+
+    private func rememberedMousePosition(of event: NSEvent) -> UInt16Point? {
+        guard let position = scaledContentRelativePosition(of: event) else {
+            return nil
+        }
+
+        lastValidMousePosition = (x: position.x, y: position.y)
+        return position
+    }
+
+    private func handleMouseButtonDown(_ button: VNCMouseButton, with event: NSEvent) {
+        guard let connection,
+              let position = rememberedMousePosition(of: event) else {
             return
         }
 
-        connection.mouseButtonUp(.middle,
-                                 x: position.x, y: position.y)
-	}
+        connection.mouseButtonDown(button, x: position.x, y: position.y)
+        pressedMouseButtonRawValues.insert(button.rawValue)
+    }
+
+    private func handleMouseButtonDragged(_ button: VNCMouseButton, with event: NSEvent) {
+        guard pressedMouseButtonRawValues.contains(button.rawValue),
+              let connection,
+              let position = rememberedMousePosition(of: event) else {
+            return
+        }
+
+        connection.mouseMove(x: position.x, y: position.y)
+    }
+
+    private func handleMouseButtonUp(_ button: VNCMouseButton, with event: NSEvent) {
+        guard pressedMouseButtonRawValues.remove(button.rawValue) != nil,
+              let connection else {
+            return
+        }
+
+        let position = rememberedMousePosition(of: event)
+            ?? lastValidMousePosition.map { UInt16Point(x: $0.x, y: $0.y) }
+
+        guard let position else { return }
+        connection.mouseButtonUp(button, x: position.x, y: position.y)
+    }
+
+    private func releasePressedMouseButtons() {
+        let pressedButtons = pressedMouseButtonRawValues.sorted()
+        pressedMouseButtonRawValues.removeAll()
+
+        guard let connection,
+              let lastValidMousePosition else {
+            return
+        }
+
+        for rawValue in pressedButtons {
+            guard let button = VNCMouseButton(rawValue: rawValue) else { continue }
+            connection.mouseButtonUp(button,
+                                     x: lastValidMousePosition.x,
+                                     y: lastValidMousePosition.y)
+        }
+    }
 
 	func handleScrollWheel(with event: NSEvent) {
 		guard let position = scaledContentRelativePosition(of: event) else { return }
