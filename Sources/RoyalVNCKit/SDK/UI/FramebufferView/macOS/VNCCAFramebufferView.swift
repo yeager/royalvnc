@@ -103,6 +103,7 @@ public final class VNCCAFramebufferView: NSView, VNCFramebufferView {
 	private var previousHotKeyMode: UnsafeMutableRawPointer?
     private var pressedMouseButtonRawValues = Set<Int>()
     private var lastValidMousePosition: (x: UInt16, y: UInt16)?
+	private var keyEventTracker = VNCKeyEventTracker()
     
     private static let enableMetalRendering = true
     
@@ -262,6 +263,7 @@ public final class VNCCAFramebufferView: NSView, VNCFramebufferView {
 
 	public override func resignFirstResponder() -> Bool {
         releasePressedMouseButtons()
+        releasePressedKeys()
         deregisterHotKeys()
 
         return true
@@ -498,7 +500,12 @@ extension VNCCAFramebufferView {
 			return
 		}
 
-		let keyCodes = keyCodesFrom(event: event)
+		let keyCodes = keyEventTracker.keyDown(for: CGKeyCode(event.keyCode),
+										   characters: VNCKeyEventTracker.resolvedCharacters(for: event))
+
+		if keyCodes.isEmpty {
+			connection.logger.logError("Ignoring unconvertable key press (Key Code: \(event.keyCode))")
+		}
 
 		for keyCode in keyCodes {
 			connection.keyDown(keyCode)
@@ -511,11 +518,23 @@ extension VNCCAFramebufferView {
 			return
 		}
 
-		let keyCodes = keyCodesFrom(event: event)
+		let keyCodes = keyEventTracker.keyUp(for: CGKeyCode(event.keyCode))
 
 		for keyCode in keyCodes {
 			connection.keyUp(keyCode)
 		}
+	}
+
+	func releasePressedKeys() {
+		if let connection {
+			for keyCode in keyEventTracker.releaseAll() {
+				connection.keyUp(keyCode)
+			}
+		} else {
+			_ = keyEventTracker.releaseAll()
+		}
+
+		lastModifierFlags = []
 	}
 
 	func handleFlagsChanged(with event: NSEvent) {
@@ -555,20 +574,6 @@ extension VNCCAFramebufferView {
 		handleKeyUp(with: event)
 
 		return true
-	}
-
-	func keyCodesFrom(event: NSEvent) -> [VNCKeyCode] {
-		let characters = event.charactersIgnoringModifiers
-		let keyCode = CGKeyCode(event.keyCode)
-
-		let keys = VNCKeyCode.keyCodesFrom(cgKeyCode: keyCode,
-										   characters: characters)
-
-		if keys.isEmpty {
-			connection?.logger.logError("Ignoring unconvertable key press (Key Code: \(event.keyCode))")
-		}
-
-		return keys
 	}
 }
 

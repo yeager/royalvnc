@@ -11,7 +11,16 @@ $PSStyle.OutputRendering = 'ANSI'
 $CONFIGURATION = 'Release'
 
 $DEMO_DIR = Join-Path $REPO_ROOT 'Bindings/dotnet/RoyalApps.RoyalVNCKit.Demo' -Resolve
-exec { dotnet build --configuration $CONFIGURATION $DEMO_DIR }
+if ($IsLinux) {
+    $SWIFT_BUILD_OUTPUT_DIR = (& swift build --configuration release --show-bin-path).Trim()
+    $SWIFT_LIBRARY = Join-Path $SWIFT_BUILD_OUTPUT_DIR 'libRoyalVNCKit.so'
+    if (-not (Test-Path $SWIFT_LIBRARY -PathType Leaf)) {
+        throw "SwiftPM did not produce the native library at ${SWIFT_LIBRARY}"
+    }
+    exec { dotnet build --configuration $CONFIGURATION "-p:SwiftBuildOutputDir=${SWIFT_BUILD_OUTPUT_DIR}" $DEMO_DIR }
+} else {
+    exec { dotnet build --configuration $CONFIGURATION $DEMO_DIR }
+}
 
 $NATIVE_DIR = Join-Path $REPO_ROOT 'Bindings/dotnet/RoyalApps.RoyalVNCKit.native' -Resolve
 $NUSPEC_FILE = Join-Path $NATIVE_DIR 'native.nuspec' -Resolve

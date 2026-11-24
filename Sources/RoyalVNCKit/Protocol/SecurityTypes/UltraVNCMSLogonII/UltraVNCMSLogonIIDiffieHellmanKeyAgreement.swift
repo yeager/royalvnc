@@ -47,22 +47,22 @@ private extension VNCProtocol.UltraVNCMSLogonIIAuthentication.DiffieHellmanKeyAg
               generatorNum.isLessThan(maxNum) else {
             return nil
         }
-        
+
         guard let modulusNum = BigNum(data: modulus),
               modulusNum.isLessThan(maxNum) else {
             return nil
         }
-        
+
         let privNum = BigNum.randomNumber(lessThan: maxNum)
         guard privNum.isLessThan(maxNum) else { return nil }
-        
+
         guard let privData = privNum.fixedWidthBigEndianData(length: 8) else { return nil }
 
         let pubNum = generatorNum.power(exponent: privNum,
                                         modulus: modulusNum)
-        
+
         guard let pubData = pubNum.fixedWidthBigEndianData(length: 8) else { return nil }
-        
+
         let keyPair = KeyPair(publicKey: pubData,
                               privateKey: privData)
 

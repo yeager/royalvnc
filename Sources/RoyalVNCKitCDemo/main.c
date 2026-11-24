@@ -137,6 +137,8 @@ char* authenticationTypeToString(RVNC_AUTHENTICATIONTYPE authenticationType) {
             return "Apple Remote Desktop";
         case RVNC_AUTHENTICATIONTYPE_ULTRAVNCMSLOGONII:
             return "Ultra VNC MS Logon II";
+        case RVNC_AUTHENTICATIONTYPE_VENCRYPTPLAIN:
+            return "VeNCrypt X509Plain";
     }
 }
 
