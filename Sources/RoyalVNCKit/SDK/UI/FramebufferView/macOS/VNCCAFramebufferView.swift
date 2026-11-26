@@ -100,6 +100,7 @@ public final class VNCCAFramebufferView: NSView, VNCFramebufferView {
 
 	private var displayLink: DisplayLink?
 	private var trackingArea: NSTrackingArea?
+	private var mouseFocusObservers: [NSObjectProtocol] = []
 	private var previousHotKeyMode: UnsafeMutableRawPointer?
     private var pressedMouseButtonRawValues = Set<Int>()
     private var lastValidMousePosition: (x: UInt16, y: UInt16)?
@@ -198,13 +199,26 @@ public final class VNCCAFramebufferView: NSView, VNCFramebufferView {
 	}
 
 	deinit {
+		mouseFocusObservers.forEach(NotificationCenter.default.removeObserver)
 		removeDisplayLink()
 
 		deregisterHotKeys()
 	}
 
 	public override func viewDidMoveToWindow() {
+		super.viewDidMoveToWindow()
+		releasePressedMouseButtons()
+		mouseFocusObservers.forEach(NotificationCenter.default.removeObserver)
+		mouseFocusObservers.removeAll()
 		addDisplayLink()
+
+		guard let window else { return }
+		for (name, object) in [(NSWindow.didResignKeyNotification, window as AnyObject),
+							   (NSApplication.didResignActiveNotification, NSApp as AnyObject)] {
+			mouseFocusObservers.append(NotificationCenter.default.addObserver(
+				forName: name, object: object, queue: .main
+			) { [weak self] _ in self?.releasePressedMouseButtons() })
+		}
 	}
 
 	func removeDisplayLink() {
@@ -448,19 +462,17 @@ extension VNCCAFramebufferView {
     }
 
     private func releasePressedMouseButtons() {
-        let pressedButtons = pressedMouseButtonRawValues.sorted()
-        pressedMouseButtonRawValues.removeAll()
-
         guard let connection,
               let lastValidMousePosition else {
             return
         }
 
-        for rawValue in pressedButtons {
+        for rawValue in pressedMouseButtonRawValues.sorted() {
             guard let button = VNCMouseButton(rawValue: rawValue) else { continue }
             connection.mouseButtonUp(button,
                                      x: lastValidMousePosition.x,
                                      y: lastValidMousePosition.y)
+            pressedMouseButtonRawValues.remove(rawValue)
         }
     }
 
