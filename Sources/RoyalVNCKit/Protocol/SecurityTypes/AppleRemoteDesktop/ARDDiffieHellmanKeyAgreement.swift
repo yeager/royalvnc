@@ -14,7 +14,10 @@ extension VNCProtocol.ARDAuthentication {
 			  generator: Data,
 			  peerKey: Data,
 			  keyLength: Int) {
-			guard keyLength > 0 else {
+			guard Self.hasValidParameters(prime: prime,
+										  generator: generator,
+										  peerKey: peerKey,
+										  keyLength: keyLength) else {
 				return nil
 			}
 
@@ -28,7 +31,8 @@ extension VNCProtocol.ARDAuthentication {
 
 			guard let secretKey = Self.computeSharedKey(prime: prime,
 														peerKey: peerKey,
-														privateKey: keyPair.privateKey),
+														privateKey: keyPair.privateKey,
+														keyLength: keyLength),
 				  !secretKey.isEmpty else {
 				return nil
 			}
@@ -37,6 +41,33 @@ extension VNCProtocol.ARDAuthentication {
 			self.privateKey = keyPair.privateKey
 			self.secretKey = secretKey
 		}
+	}
+}
+
+extension VNCProtocol.ARDAuthentication.DiffieHellmanKeyAgreement {
+	static func hasValidParameters(prime: Data,
+								   generator: Data,
+								   peerKey: Data,
+								   keyLength: Int) -> Bool {
+		guard keyLength > 0,
+			  keyLength <= VNCProtocol.ARDAuthentication.maximumKeyLength,
+			  prime.count == keyLength,
+			  peerKey.count == keyLength,
+			  !generator.isEmpty,
+			  prime.last.map({ $0 & 1 == 1 }) == true,
+			  let bigPrime = BigNum(data: prime),
+			  !bigPrime.isLessThan(5),
+			  let primeMinusOne = bigPrime.subtracting(1),
+			  let bigGenerator = BigNum(data: generator),
+			  !bigGenerator.isLessThan(2),
+			  bigGenerator.isLessThan(primeMinusOne),
+			  let bigPeerKey = BigNum(data: peerKey),
+			  !bigPeerKey.isLessThan(2),
+			  bigPeerKey.isLessThan(primeMinusOne) else {
+			return false
+		}
+
+		return true
 	}
 }
 
@@ -75,14 +106,8 @@ private extension VNCProtocol.ARDAuthentication.DiffieHellmanKeyAgreement {
 			return nil
 		}
 
-		// Check key lengths of generated private and public DH keys
-		guard bigPrivKey.bytesCount == keyLength,
-			  bigPubKey.bytesCount == keyLength else {
-			return nil
-		}
-
-		guard let privKey = bigPrivKey.bigEndianData(),
-			  let pubKey = bigPubKey.bigEndianData() else {
+		guard let privKey = bigPrivKey.fixedWidthBigEndianData(length: keyLength),
+			  let pubKey = bigPubKey.fixedWidthBigEndianData(length: keyLength) else {
 			return nil
 		}
 
@@ -94,7 +119,8 @@ private extension VNCProtocol.ARDAuthentication.DiffieHellmanKeyAgreement {
 
 	static func computeSharedKey(prime: Data,
 								 peerKey: Data,
-								 privateKey: Data) -> Data? {
+							 privateKey: Data,
+							 keyLength: Int) -> Data? {
 		guard let bigPrime = BigNum(data: prime),
 			  let bigPrivKey = BigNum(data: privateKey),
 			  let bigPeerKey = BigNum(data: peerKey) else {
@@ -112,7 +138,7 @@ private extension VNCProtocol.ARDAuthentication.DiffieHellmanKeyAgreement {
 			return nil
 		}
 
-		guard let sharedKey = bigSharedKey.bigEndianData() else {
+		guard let sharedKey = bigSharedKey.fixedWidthBigEndianData(length: keyLength) else {
 			return nil
 		}
 

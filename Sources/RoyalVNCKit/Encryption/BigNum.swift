@@ -102,6 +102,19 @@ extension BigNum {
     func isLessThan(_ value: UInt64) -> Bool {
         bigInt < value
     }
+
+    func isLessThan(_ other: BigNum) -> Bool {
+        bigInt < other.bigInt
+    }
+
+    func subtracting(_ value: UInt64) -> BigNum? {
+        let subtrahend = BigUInteger(value)
+        guard bigInt >= subtrahend else {
+            return nil
+        }
+
+        return .init(bigInt - subtrahend)
+    }
 }
 
 

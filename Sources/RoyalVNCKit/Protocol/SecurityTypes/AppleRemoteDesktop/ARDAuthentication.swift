@@ -13,12 +13,19 @@ extension VNCProtocol {
 		let keySize: UInt16
 		let prime: Data
 		let peerKey: Data
+		static let maximumKeyLength = 512
 
 		fileprivate init?(generator: Data,
 						  keySize: UInt16,
 						  prime: Data,
 						  peerKey: Data) {
-			guard generator.count == 2 else {
+			guard generator.count == 2,
+				  keySize > 0,
+				  Int(keySize) <= Self.maximumKeyLength,
+				  DiffieHellmanKeyAgreement.hasValidParameters(prime: prime,
+														generator: generator,
+														peerKey: peerKey,
+														keyLength: Int(keySize)) else {
 				return nil
 			}
 
@@ -40,6 +47,12 @@ extension VNCProtocol.ARDAuthentication {
 	static func receive(connection: NetworkConnectionReading) async throws -> Self {
 		let generator = try await connection.readBuffered(length: 2)
 		let keySize = try await connection.readUInt16()
+
+		guard keySize > 0,
+			  Int(keySize) <= Self.maximumKeyLength else {
+			throw VNCError.protocol(.invalidData)
+		}
+
 		let prime = try await connection.readBuffered(length: .init(keySize))
 		let peerKey = try await connection.readBuffered(length: .init(keySize))
 
