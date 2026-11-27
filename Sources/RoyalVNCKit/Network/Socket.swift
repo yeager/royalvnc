@@ -49,6 +49,10 @@ final class Socket: Sendable {
     }
 
     func connect() throws(Errors) {
+#if canImport(Glibc)
+        try enableTCPKeepAlive()
+#endif
+
         let connectResult: Int32
 
 #if canImport(Glibc)
@@ -84,6 +88,43 @@ final class Socket: Sendable {
 #endif
         }
     }
+
+#if canImport(Glibc)
+    /// Detects an idle peer that has disappeared without sending a TCP FIN/RST.
+    private func enableTCPKeepAlive() throws(Errors) {
+        var enabled: Int32 = 1
+        guard Glibc.setsockopt(
+            nativeSocket,
+            SOL_SOCKET,
+            SO_KEEPALIVE,
+            &enabled,
+            socklen_t(MemoryLayout<Int32>.size)
+        ) == 0 else {
+            throw .socketOptionFailed(underlyingErrorCode: errno)
+        }
+
+        // Probe after 60 seconds idle, then every 10 seconds, failing after
+        // three unanswered probes. Linux reports the dead connection to recv.
+        let options: [(Int32, Int32)] = [
+            (Int32(TCP_KEEPIDLE), 60),
+            (Int32(TCP_KEEPINTVL), 10),
+            (Int32(TCP_KEEPCNT), 3),
+        ]
+
+        for (option, value) in options {
+            var value = value
+            guard Glibc.setsockopt(
+                nativeSocket,
+                Int32(IPPROTO_TCP),
+                option,
+                &value,
+                socklen_t(MemoryLayout<Int32>.size)
+            ) == 0 else {
+                throw .socketOptionFailed(underlyingErrorCode: errno)
+            }
+        }
+    }
+#endif
 
     /// Interrupts a blocking connect, receive, or send without closing the
     /// descriptor while another thread may still be using it.
@@ -194,6 +235,7 @@ final class Socket: Sendable {
 extension Socket {
     enum Errors: LocalizedError {
         case socketCreationFailed(underlyingErrorCode: Int32?)
+        case socketOptionFailed(underlyingErrorCode: Int32)
         case connectFailed(underlyingErrorCode: Int32)
         case receiveFailed(underlyingErrorCode: Int32)
         case sendFailed(underlyingErrorCode: Int32)
@@ -212,6 +254,8 @@ extension Socket {
                     return "Socket creation failed (\(underlyingErrorCodeStr))"
                 case .connectFailed(let underlyingErrorCode):
                     return "Connect failed (\(underlyingErrorCode))"
+                case .socketOptionFailed(let underlyingErrorCode):
+                    return "Socket option setup failed (\(underlyingErrorCode))"
                 case .receiveFailed(let underlyingErrorCode):
                     return "Receive failed (\(underlyingErrorCode))"
                 case .sendFailed(let underlyingErrorCode):
