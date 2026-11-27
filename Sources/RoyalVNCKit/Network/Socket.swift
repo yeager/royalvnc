@@ -85,6 +85,20 @@ final class Socket: Sendable {
         }
     }
 
+    /// Interrupts a blocking connect, receive, or send without closing the
+    /// descriptor while another thread may still be using it.
+    func shutdown() {
+#if canImport(WinSDK)
+        _ = WinSDK.shutdown(nativeSocket, SD_BOTH)
+#elseif canImport(Glibc)
+        _ = Glibc.shutdown(nativeSocket, Int32(SHUT_RDWR))
+#elseif canImport(Darwin)
+        _ = Darwin.shutdown(nativeSocket, SHUT_RDWR)
+#elseif canImport(Android)
+        _ = Android.shutdown(nativeSocket, Int32(SHUT_RDWR))
+#endif
+    }
+
     func receive(buffer: inout [UInt8]) throws(Errors) -> Int {
         let bufferSize = buffer.count
 
