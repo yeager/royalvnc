@@ -1,8 +1,4 @@
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
 import Foundation
-#endif
 
 import Dispatch
 
@@ -23,7 +19,7 @@ final class SocketNetworkConnection: NetworkConnection {
     // This will be replaced when calling start. Calling any other method before start (which would use this placeholder queue) is a programmer error.
     private var queue = DispatchQueue(label: "PLACEHOLDER")
 
-    private(set) var status: NetworkConnectionStatus {
+    var status: NetworkConnectionStatus {
         stateLock.lock()
         defer { stateLock.unlock() }
         return storedStatus
@@ -178,7 +174,7 @@ extension SocketNetworkConnection: NetworkConnectionReading {
                 do {
                     bytesRead = try socket.receive(buffer: &buffer)
                 } catch {
-                    let connectionError: VNCError = cancellationRequested
+                    let connectionError: VNCError = self.cancellationRequested
                         ? .connection(.cancelled)
                         : .connection(.failed(error))
                     continuation.resume(throwing: connectionError)
@@ -187,7 +183,7 @@ extension SocketNetworkConnection: NetworkConnectionReading {
 
                 // Handle connection closure
                 if bytesRead == 0 {
-                    let connectionError: VNCError = cancellationRequested
+                    let connectionError: VNCError = self.cancellationRequested
                         ? .connection(.cancelled)
                         : .connection(.closed)
                     continuation.resume(throwing: connectionError)
@@ -229,7 +225,7 @@ extension SocketNetworkConnection: NetworkConnectionWriting {
                     _ = try socket.send(buffer: bytesToSend)
                     continuation.resume()
                 } catch {
-                    let connectionError: VNCError = cancellationRequested
+                    let connectionError: VNCError = self.cancellationRequested
                         ? .connection(.cancelled)
                         : .connection(.failed(error))
                     continuation.resume(throwing: connectionError)
