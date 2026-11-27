@@ -230,7 +230,7 @@ extension SocketNetworkConnection: NetworkConnectionWriting {
             queue.async {
                 let bytesToSend = [UInt8](data)
                 do {
-                    _ = try socket.send(buffer: bytesToSend)
+                    try Self.writeAll(bytes: bytesToSend) { try socket.send(buffer: $0) }
                     continuation.resume()
                 } catch {
                     let connectionError: VNCError
@@ -245,4 +245,20 @@ extension SocketNetworkConnection: NetworkConnectionWriting {
             }
         }
 	}
+}
+
+// Keep each message on the serial connection queue until every byte has been
+// accepted by the socket. A successful send may consume only a prefix.
+extension SocketNetworkConnection {
+    static func writeAll(bytes: [UInt8], send: ([UInt8]) throws -> Int) throws {
+        var offset = 0
+        while offset < bytes.count {
+            let remaining = Array(bytes[offset...])
+            let sent = try send(remaining)
+            guard sent > 0, sent <= remaining.count else {
+                throw Socket.Errors.sendFailed(underlyingErrorCode: 0)
+            }
+            offset += sent
+        }
+    }
 }
