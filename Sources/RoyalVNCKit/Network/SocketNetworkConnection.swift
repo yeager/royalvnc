@@ -84,7 +84,7 @@ extension SocketNetworkConnection: NetworkConnectionReading {
         let queue = self.queue
 
         guard let socket else {
-            throw Socket.Errors.socketCreationFailed(underlyingErrorCode: nil)
+            throw VNCError.connection(.notReady)
         }
 
         let bufferSize = maximumLength
@@ -92,22 +92,18 @@ extension SocketNetworkConnection: NetworkConnectionReading {
 		return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 var buffer = [UInt8](repeating: 0, count: bufferSize)
-                let bytesRead = socket.receive(buffer: &buffer)
+                let bytesRead: Int
+                do {
+                    bytesRead = try socket.receive(buffer: &buffer)
+                } catch {
+                    continuation.resume(throwing: VNCError.connection(.failed(error)))
+                    return
+                }
 
                 // Handle connection closure
                 if bytesRead == 0 {
                     // TODO
-                    continuation.resume(throwing: Errors.connectionClosed)
-
-                    return
-                }
-
-                // Handle errors during receiving
-                if bytesRead < 0 {
-                    // let errorNumber = errno
-                    // print("Error: \(errorNumber.hexString())")
-
-                    continuation.resume(throwing: VNCError.protocol(.noData))
+                    continuation.resume(throwing: VNCError.connection(.closed))
 
                     return
                 }
@@ -136,38 +132,19 @@ extension SocketNetworkConnection: NetworkConnectionWriting {
         let queue = self.queue
 
         guard let socket else {
-            throw Socket.Errors.socketCreationFailed(underlyingErrorCode: nil)
+            throw VNCError.connection(.notReady)
         }
 
 		return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 let bytesToSend = [UInt8](data)
-                let bytesSent = socket.send(buffer: bytesToSend)
-
-                if bytesSent < 0 {
-                    continuation.resume(throwing: Errors.sendFailed)
-                } else {
+                do {
+                    _ = try socket.send(buffer: bytesToSend)
                     continuation.resume()
+                } catch {
+                    continuation.resume(throwing: VNCError.connection(.failed(error)))
                 }
             }
         }
 	}
-}
-
-// MARK: - Errors
-private extension SocketNetworkConnection {
-    // MARK: - Enum for Socket Errors
-    enum Errors: LocalizedError {
-        case sendFailed
-        case connectionClosed
-
-        var errorDescription: String? {
-            switch self {
-                case .sendFailed:
-                    "Send failed"
-                case .connectionClosed:
-                    "Connection closed"
-            }
-        }
-    }
 }
