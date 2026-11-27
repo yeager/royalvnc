@@ -34,7 +34,7 @@ final class Socket: Sendable {
 
 #if canImport(Glibc) || canImport(Darwin) || canImport(Android)
         guard nativeSocket >= 0 else {
-            throw .socketCreationFailed(underlyingErrorCode: nil)
+            throw .socketCreationFailed(underlyingErrorCode: errno)
         }
 #elseif canImport(WinSDK)
         guard nativeSocket != INVALID_SOCKET else {
@@ -58,11 +58,10 @@ final class Socket: Sendable {
             addressInfo.addrlen
         )
 #elseif canImport(Android)
-        connectResult = Android.connect(
-            nativeSocket,
-            addressInfo.addr!, // TODO: Get rid of force unwrap
-            addressInfo.addrlen
-        )
+        guard let address = addressInfo.addr else {
+            throw .connectFailed(underlyingErrorCode: EINVAL)
+        }
+        connectResult = Android.connect(nativeSocket, address, addressInfo.addrlen)
 #elseif canImport(Darwin)
         connectResult = Darwin.connect(
             nativeSocket,
@@ -78,16 +77,20 @@ final class Socket: Sendable {
 #endif
 
         guard connectResult >= 0 else {
-            throw .connectFailed(underlyingErrorCode: connectResult)
+#if canImport(WinSDK)
+            throw .connectFailed(underlyingErrorCode: WSAGetLastError())
+#else
+            throw .connectFailed(underlyingErrorCode: errno)
+#endif
         }
     }
 
-    func receive(buffer: inout [UInt8]) -> Int {
+    func receive(buffer: inout [UInt8]) throws(Errors) -> Int {
         let bufferSize = buffer.count
 
-        let bytesRead: Int = buffer.withUnsafeMutableBytes { bufferPtr in
+        let (bytesRead, errorCode): (Int, Int32?) = buffer.withUnsafeMutableBytes { bufferPtr in
             guard let bufferPtrAddr = bufferPtr.baseAddress else {
-                return 0
+                return (0, nil)
             }
 
             let ret = recv(
@@ -97,18 +100,27 @@ final class Socket: Sendable {
                 0
             )
 
-            return .init(ret)
+            guard ret < 0 else { return (.init(ret), nil) }
+#if canImport(WinSDK)
+            return (-1, WSAGetLastError())
+#else
+            return (-1, errno)
+#endif
         }
 
+        if bytesRead < 0 {
+            throw .receiveFailed(underlyingErrorCode: errorCode ?? 0)
+        }
         return bytesRead
     }
 
-    func send(buffer: [UInt8]) -> Int {
+    func send(buffer: [UInt8]) throws(Errors) -> Int {
         let bufferCount = buffer.count
+        guard bufferCount > 0 else { return 0 }
 
-        let bytesSent: Int = buffer.withUnsafeBytes { bufferPtr in
+        let (bytesSent, errorCode): (Int, Int32?) = buffer.withUnsafeBytes { bufferPtr in
             guard let bufferPtrAddr = bufferPtr.baseAddress else {
-                return -1
+                return (-1, nil)
             }
 
 #if canImport(Glibc)
@@ -141,9 +153,17 @@ final class Socket: Sendable {
             )
 #endif
 
-            return .init(ret)
+            guard ret < 0 else { return (.init(ret), nil) }
+#if canImport(WinSDK)
+            return (-1, WSAGetLastError())
+#else
+            return (-1, errno)
+#endif
         }
 
+        if bytesSent <= 0 {
+            throw .sendFailed(underlyingErrorCode: errorCode ?? 0)
+        }
         return bytesSent
     }
 
@@ -161,6 +181,8 @@ extension Socket {
     enum Errors: LocalizedError {
         case socketCreationFailed(underlyingErrorCode: Int32?)
         case connectFailed(underlyingErrorCode: Int32)
+        case receiveFailed(underlyingErrorCode: Int32)
+        case sendFailed(underlyingErrorCode: Int32)
 
         var errorDescription: String? {
             switch self {
@@ -176,6 +198,10 @@ extension Socket {
                     return "Socket creation failed (\(underlyingErrorCodeStr))"
                 case .connectFailed(let underlyingErrorCode):
                     return "Connect failed (\(underlyingErrorCode))"
+                case .receiveFailed(let underlyingErrorCode):
+                    return "Receive failed (\(underlyingErrorCode))"
+                case .sendFailed(let underlyingErrorCode):
+                    return "Send failed (\(underlyingErrorCode))"
             }
         }
     }
