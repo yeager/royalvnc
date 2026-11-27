@@ -174,18 +174,26 @@ extension SocketNetworkConnection: NetworkConnectionReading {
                 do {
                     bytesRead = try socket.receive(buffer: &buffer)
                 } catch {
-                    let connectionError: VNCError = self.cancellationRequested
-                        ? .connection(.cancelled)
-                        : .connection(.failed(error))
+                    let connectionError: VNCError
+                    if self.cancellationRequested {
+                        connectionError = .connection(.cancelled)
+                    } else {
+                        self.updateStatus(.failed(error))
+                        connectionError = .connection(.failed(error))
+                    }
                     continuation.resume(throwing: connectionError)
                     return
                 }
 
                 // Handle connection closure
                 if bytesRead == 0 {
-                    let connectionError: VNCError = self.cancellationRequested
-                        ? .connection(.cancelled)
-                        : .connection(.closed)
+                    let connectionError: VNCError
+                    if self.cancellationRequested {
+                        connectionError = .connection(.cancelled)
+                    } else {
+                        self.updateStatus(.failed(VNCError.ConnectionError.closed))
+                        connectionError = .connection(.closed)
+                    }
                     continuation.resume(throwing: connectionError)
 
                     return
@@ -225,9 +233,13 @@ extension SocketNetworkConnection: NetworkConnectionWriting {
                     _ = try socket.send(buffer: bytesToSend)
                     continuation.resume()
                 } catch {
-                    let connectionError: VNCError = self.cancellationRequested
-                        ? .connection(.cancelled)
-                        : .connection(.failed(error))
+                    let connectionError: VNCError
+                    if self.cancellationRequested {
+                        connectionError = .connection(.cancelled)
+                    } else {
+                        self.updateStatus(.failed(error))
+                        connectionError = .connection(.failed(error))
+                    }
                     continuation.resume(throwing: connectionError)
                 }
             }
