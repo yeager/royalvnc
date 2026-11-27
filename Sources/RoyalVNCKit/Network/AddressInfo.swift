@@ -47,7 +47,7 @@ final class AddressInfo: @unchecked Sendable {
         )
 
         guard getaddrinfoStatus == 0 else {
-            throw .dnsResolutionFailed
+            throw .dnsResolutionFailed(underlyingErrorCode: getaddrinfoStatus)
         }
 
         guard let addrInfo else {
@@ -83,13 +83,13 @@ extension AddressInfo {
 // MARK: - Errors
 extension AddressInfo {
     enum Errors: LocalizedError {
-        case dnsResolutionFailed
+        case dnsResolutionFailed(underlyingErrorCode: Int32)
         case addressInfoEmpty
 
         var errorDescription: String? {
             switch self {
-                case .dnsResolutionFailed:
-                    "DNS resolution failed"
+                case .dnsResolutionFailed(let underlyingErrorCode):
+                    "DNS resolution failed (\(underlyingErrorCode))"
                 case .addressInfoEmpty:
                     "Address info is empty"
             }

@@ -1,8 +1,4 @@
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
 import Foundation
-#endif
 
 import Dispatch
 
@@ -10,17 +6,23 @@ import Dispatch
 final class SocketNetworkConnection: NetworkConnection {
     let settings: NetworkConnectionSettings
 
-    private var socket: Socket?
+    private let stateLock = NSLock()
+    private var storedSocket: Socket?
+    private var didStart = false
+    private var isCancelled = false
+    private var storedStatus: NetworkConnectionStatus = .setup
+    private var storedStatusUpdateHandler: NetworkConnectionStatusUpdateHandler?
+    private var statusRevision = 0
+    private let statusCallbackQueue = DispatchQueue(label: "com.royalapps.royalvnc.socket.status")
+    private let statusCallbackLock = NSRecursiveLock()
 
     // This will be replaced when calling start. Calling any other method before start (which would use this placeholder queue) is a programmer error.
     private var queue = DispatchQueue(label: "PLACEHOLDER")
 
-    private(set) var statusUpdateHandler: NetworkConnectionStatusUpdateHandler?
-
-    private(set) var status: NetworkConnectionStatus = .unknown("None") {
-        didSet {
-            statusUpdateHandler?(status)
-        }
+    var status: NetworkConnectionStatus {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return storedStatus
     }
 
     init(settings: NetworkConnectionSettings) {
@@ -36,7 +38,12 @@ final class SocketNetworkConnection: NetworkConnection {
     }
 
     func setStatusUpdateHandler(_ statusUpdateHandler: NetworkConnectionStatusUpdateHandler?) {
-        self.statusUpdateHandler = statusUpdateHandler
+        statusCallbackLock.lock()
+        stateLock.lock()
+        storedStatusUpdateHandler = statusUpdateHandler
+        statusRevision += 1
+        stateLock.unlock()
+        statusCallbackLock.unlock()
     }
 
     var isReady: Bool {
@@ -49,13 +56,34 @@ final class SocketNetworkConnection: NetworkConnection {
     }
 
     func cancel() {
-        // TODO
-        // fatalError("Not implemented")
+        statusCallbackLock.lock()
+        stateLock.lock()
+        guard !isCancelled else {
+            stateLock.unlock()
+            statusCallbackLock.unlock()
+            return
+        }
+        isCancelled = true
+        storedStatus = .cancelled
+        let socket = storedSocket
+        scheduleStatusUpdateLocked(.cancelled)
+        stateLock.unlock()
+
+        socket?.shutdown()
+        statusCallbackLock.unlock()
     }
 
     func start(queue: DispatchQueue) {
-        self.status = .preparing
+        stateLock.lock()
+        guard !didStart, !isCancelled else {
+            stateLock.unlock()
+            return
+        }
+        didStart = true
         self.queue = queue
+        storedStatus = .preparing
+        scheduleStatusUpdateLocked(.preparing)
+        stateLock.unlock()
 
         queue.async { [weak self] in
             guard let self else { return }
@@ -66,14 +94,64 @@ final class SocketNetworkConnection: NetworkConnection {
 
                 let socket = try Socket(addressInfo: addressInfo)
 
+                stateLock.lock()
+                guard !isCancelled else {
+                    stateLock.unlock()
+                    return
+                }
+                storedSocket = socket
+                stateLock.unlock()
+
                 try socket.connect()
 
-                self.socket = socket
-                self.status = .ready
+                updateStatus(.ready)
             } catch {
-                self.status = .failed(error)
+                updateStatus(.failed(error))
             }
         }
+    }
+
+    private func updateStatus(_ newStatus: NetworkConnectionStatus) {
+        stateLock.lock()
+        guard !isCancelled else {
+            stateLock.unlock()
+            return
+        }
+        storedStatus = newStatus
+        scheduleStatusUpdateLocked(newStatus)
+        stateLock.unlock()
+    }
+
+    /// Must be called while `stateLock` is held to preserve transition order.
+    private func scheduleStatusUpdateLocked(_ newStatus: NetworkConnectionStatus) {
+        statusRevision += 1
+        let revision = statusRevision
+        statusCallbackQueue.async { [weak self] in
+            guard let self else { return }
+            self.statusCallbackLock.lock()
+            self.stateLock.lock()
+            guard revision == self.statusRevision else {
+                self.stateLock.unlock()
+                self.statusCallbackLock.unlock()
+                return
+            }
+            let handler = self.storedStatusUpdateHandler
+            self.stateLock.unlock()
+            handler?(newStatus)
+            self.statusCallbackLock.unlock()
+        }
+    }
+
+    private func currentSocket() -> Socket? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return storedSocket
+    }
+
+    private var cancellationRequested: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return isCancelled
     }
 }
 
@@ -83,8 +161,8 @@ extension SocketNetworkConnection: NetworkConnectionReading {
               maximumLength: Int) async throws -> Data {
         let queue = self.queue
 
-        guard let socket else {
-            throw Socket.Errors.socketCreationFailed(underlyingErrorCode: nil)
+        guard let socket = currentSocket() else {
+            throw VNCError.connection(.notReady)
         }
 
         let bufferSize = maximumLength
@@ -92,22 +170,31 @@ extension SocketNetworkConnection: NetworkConnectionReading {
 		return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 var buffer = [UInt8](repeating: 0, count: bufferSize)
-                let bytesRead = socket.receive(buffer: &buffer)
-
-                // Handle connection closure
-                if bytesRead == 0 {
-                    // TODO
-                    continuation.resume(throwing: Errors.connectionClosed)
-
+                let bytesRead: Int
+                do {
+                    bytesRead = try socket.receive(buffer: &buffer)
+                } catch {
+                    let connectionError: VNCError
+                    if self.cancellationRequested {
+                        connectionError = .connection(.cancelled)
+                    } else {
+                        self.updateStatus(.failed(error))
+                        connectionError = .connection(.failed(error))
+                    }
+                    continuation.resume(throwing: connectionError)
                     return
                 }
 
-                // Handle errors during receiving
-                if bytesRead < 0 {
-                    // let errorNumber = errno
-                    // print("Error: \(errorNumber.hexString())")
-
-                    continuation.resume(throwing: VNCError.protocol(.noData))
+                // Handle connection closure
+                if bytesRead == 0 {
+                    let connectionError: VNCError
+                    if self.cancellationRequested {
+                        connectionError = .connection(.cancelled)
+                    } else {
+                        self.updateStatus(.failed(VNCError.ConnectionError.closed))
+                        connectionError = .connection(.closed)
+                    }
+                    continuation.resume(throwing: connectionError)
 
                     return
                 }
@@ -135,39 +222,43 @@ extension SocketNetworkConnection: NetworkConnectionWriting {
 	func write(data: Data) async throws {
         let queue = self.queue
 
-        guard let socket else {
-            throw Socket.Errors.socketCreationFailed(underlyingErrorCode: nil)
+        guard let socket = currentSocket() else {
+            throw VNCError.connection(.notReady)
         }
 
 		return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 let bytesToSend = [UInt8](data)
-                let bytesSent = socket.send(buffer: bytesToSend)
-
-                if bytesSent < 0 {
-                    continuation.resume(throwing: Errors.sendFailed)
-                } else {
+                do {
+                    try Self.writeAll(bytes: bytesToSend) { try socket.send(buffer: $0) }
                     continuation.resume()
+                } catch {
+                    let connectionError: VNCError
+                    if self.cancellationRequested {
+                        connectionError = .connection(.cancelled)
+                    } else {
+                        self.updateStatus(.failed(error))
+                        connectionError = .connection(.failed(error))
+                    }
+                    continuation.resume(throwing: connectionError)
                 }
             }
         }
 	}
 }
 
-// MARK: - Errors
-private extension SocketNetworkConnection {
-    // MARK: - Enum for Socket Errors
-    enum Errors: LocalizedError {
-        case sendFailed
-        case connectionClosed
-
-        var errorDescription: String? {
-            switch self {
-                case .sendFailed:
-                    "Send failed"
-                case .connectionClosed:
-                    "Connection closed"
+// Keep each message on the serial connection queue until every byte has been
+// accepted by the socket. A successful send may consume only a prefix.
+extension SocketNetworkConnection {
+    static func writeAll(bytes: [UInt8], send: ([UInt8]) throws -> Int) throws {
+        var offset = 0
+        while offset < bytes.count {
+            let remaining = Array(bytes[offset...])
+            let sent = try send(remaining)
+            guard sent > 0, sent <= remaining.count else {
+                throw Socket.Errors.sendFailed(underlyingErrorCode: 0)
             }
+            offset += sent
         }
     }
 }
