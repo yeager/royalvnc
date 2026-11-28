@@ -410,13 +410,16 @@ extension VNCCAFramebufferView {
         handleMouseMoved(with: event)
     }
 
-    private func releaseMouseButton(_ button: VNCMouseButton, event: NSEvent) {
-        guard pressedMouseButtons.remove(button) != nil else { return }
-        // AppKit delivers mouseUp outside the view too. Preserve the release even
-        // over letterboxing or app chrome, using the last remote pointer location.
-        guard let position = scaledContentRelativePosition(of: event) ?? lastMousePosition else { return }
-        lastMousePosition = position
-        connection?.mouseButtonUp(button, x: position.x, y: position.y)
+    private func handleMouseButtonUp(_ button: VNCMouseButton, with event: NSEvent) {
+        guard pressedMouseButtons.contains(button),
+              let connection else {
+            return
+        }
+
+        let position = scaledContentRelativePosition(of: event) ?? lastMousePosition
+        guard let position else { return }
+        connection.mouseButtonUp(button, x: position.x, y: position.y)
+        pressedMouseButtons.remove(button)
     }
 
     private func releasePressedMouseButtons() {
